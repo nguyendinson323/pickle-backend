@@ -103,16 +103,52 @@ const searchPlayers = async (req, res) => {
 
     // Calculate distance if location is provided
     if (location_lat && location_lng && distance_km) {
-      // For simplicity, we'll use a basic distance filter
-      // In production, you'd use PostGIS or similar for accurate geospatial queries
-      players = players.map(player => {
-        // Add a mock distance calculation - in real implementation, you'd have player locations
-        player.dataValues.distance = Math.random() * distance_km
-        return player
-      }).filter(player => player.dataValues.distance <= distance_km)
+      // Get players with their associated club/court locations
+      const playersWithLocation = await Promise.all(players.map(async (player) => {
+        let playerLat = null;
+        let playerLng = null;
+        
+        // Get player location from their club's courts if available
+        if (player.club_id) {
+          const clubCourts = await Court.findAll({
+            where: {
+              owner_type: 'club',
+              owner_id: player.club_id,
+              latitude: { [Op.not]: null },
+              longitude: { [Op.not]: null }
+            },
+            limit: 1
+          });
+          
+          if (clubCourts.length > 0) {
+            playerLat = parseFloat(clubCourts[0].latitude);
+            playerLng = parseFloat(clubCourts[0].longitude);
+          }
+        }
+        
+        // Calculate distance using Haversine formula if we have player location
+        if (playerLat && playerLng) {
+          const R = 6371; // Earth's radius in km
+          const dLat = (playerLat - location_lat) * Math.PI / 180;
+          const dLng = (playerLng - location_lng) * Math.PI / 180;
+          const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                   Math.cos(location_lat * Math.PI / 180) * Math.cos(playerLat * Math.PI / 180) *
+                   Math.sin(dLng/2) * Math.sin(dLng/2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+          const distance = R * c;
+          
+          player.dataValues.distance = distance;
+          return distance <= distance_km ? player : null;
+        } else {
+          // If no location data available, exclude from distance filtering
+          return null;
+        }
+      }));
       
-      // Sort by distance
-      players.sort((a, b) => a.dataValues.distance - b.dataValues.distance)
+      // Filter out null results and sort by distance
+      players = playersWithLocation
+        .filter(player => player !== null)
+        .sort((a, b) => a.dataValues.distance - b.dataValues.distance);
     }
 
     res.status(200).json(players)

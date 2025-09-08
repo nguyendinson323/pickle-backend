@@ -7,6 +7,12 @@ const notificationRoutes = require('./notifications')
 const commonRoutes = require('./common')
 const playerRoutes = require('./playerRoutes')
 const playerFinderRoutes = require('./playerFinderRoutes')
+const tournamentBrowseRoutes = require('./tournamentBrowseRoutes')
+const courtReservationRoutes = require('./courtReservationRoutes')
+const digitalCredentialsRoutes = require('./digitalCredentialsRoutes')
+const coachingSessionsRoutes = require('./coachingSessionsRoutes')
+const playerMessagesRoutes = require('./playerMessagesRoutes')
+const playerRankingsRoutes = require('./playerRankingsRoutes')
 
 const initializeRoutes = (app) => {
   app.get('/health', (req, res) => {
@@ -27,6 +33,12 @@ const initializeRoutes = (app) => {
   app.use('/api/common', commonRoutes)
   app.use('/api/player', playerRoutes)
   app.use('/api/player-finder', playerFinderRoutes)
+  app.use('/api/tournament-browse', tournamentBrowseRoutes)
+  app.use('/api/court-reservations', courtReservationRoutes)
+  app.use('/api/digital-credentials', digitalCredentialsRoutes)
+  app.use('/api/coaching-sessions', coachingSessionsRoutes)
+  app.use('/api/player-messages', playerMessagesRoutes)
+  app.use('/api/player-rankings', playerRankingsRoutes)
 
   app.use('*', (req, res) => {
     res.status(404).json({ 
