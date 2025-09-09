@@ -13,6 +13,7 @@ const digitalCredentialsRoutes = require('./digitalCredentialsRoutes')
 const coachingSessionsRoutes = require('./coachingSessionsRoutes')
 const playerMessagesRoutes = require('./playerMessagesRoutes')
 const playerRankingsRoutes = require('./playerRankingsRoutes')
+const coachSessionsRoutes = require('./coachSessions')
 
 const initializeRoutes = (app) => {
   app.get('/health', (req, res) => {
@@ -39,6 +40,7 @@ const initializeRoutes = (app) => {
   app.use('/api/coaching-sessions', coachingSessionsRoutes)
   app.use('/api/player-messages', playerMessagesRoutes)
   app.use('/api/player-rankings', playerRankingsRoutes)
+  app.use('/api/coach', coachSessionsRoutes)
 
   app.use('*', (req, res) => {
     res.status(404).json({ 
