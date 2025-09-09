@@ -17,6 +17,7 @@ const coachSessionsRoutes = require('./coachSessions')
 const clubRoutes = require('./clubRoutes')
 const stateRoutes = require('./stateRoutes')
 const partnerRoutes = require('./partnerRoutes')
+const adminRoutes = require('./admin')
 
 const initializeRoutes = (app) => {
   app.get('/health', (req, res) => {
@@ -47,6 +48,7 @@ const initializeRoutes = (app) => {
   app.use('/api/club', clubRoutes)
   app.use('/api/state', stateRoutes)
   app.use('/api/partner', partnerRoutes)
+  app.use('/api/admin', adminRoutes)
 
   app.use('*', (req, res) => {
     res.status(404).json({ 
