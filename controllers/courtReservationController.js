@@ -18,7 +18,7 @@ const courtReservationController = {
         distance_km,
         location_lat,
         location_lng
-      } = req.body;
+      } = req.query;
 
       let whereClause = {
         status: 'active'
@@ -225,7 +225,17 @@ const courtReservationController = {
   // Get user's court reservations
   async getUserReservations(req, res) {
     try {
-      const playerId = req.user.playerId;
+      const userId = req.user.id;
+      
+      // Get player from user
+      const { Player: PlayerModel } = require('../db/models');
+      const player = await PlayerModel.findOne({ where: { user_id: userId } });
+      
+      if (!player) {
+        return res.status(404).json({ error: 'Player profile not found' });
+      }
+      
+      const playerId = player.id;
 
       const reservations = await CourtReservation.findAll({
         where: { player_id: playerId },
@@ -260,7 +270,17 @@ const courtReservationController = {
   // Make a court reservation
   async makeReservation(req, res) {
     try {
-      const playerId = req.user.playerId;
+      const userId = req.user.id;
+      
+      // Get player from user
+      const { Player: PlayerModel } = require('../db/models');
+      const player = await PlayerModel.findOne({ where: { user_id: userId } });
+      
+      if (!player) {
+        return res.status(404).json({ error: 'Player profile not found' });
+      }
+      
+      const playerId = player.id;
       const { court_id, date, start_time, end_time } = req.body;
 
       // Check for conflicts
@@ -334,7 +354,17 @@ const courtReservationController = {
   async cancelReservation(req, res) {
     try {
       const { reservationId } = req.params;
-      const playerId = req.user.playerId;
+      const userId = req.user.id;
+      
+      // Get player from user
+      const { Player: PlayerModel } = require('../db/models');
+      const player = await PlayerModel.findOne({ where: { user_id: userId } });
+      
+      if (!player) {
+        return res.status(404).json({ error: 'Player profile not found' });
+      }
+      
+      const playerId = player.id;
 
       const reservation = await CourtReservation.findOne({
         where: {

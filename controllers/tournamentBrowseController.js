@@ -12,7 +12,7 @@ const {
 const { Op } = require('sequelize')
 const { sequelize } = require('../db/models')
 
-// POST /api/tournament-browse/search - Search tournaments based on filters
+// GET /api/tournament-browse - Search tournaments based on filters
 const searchTournaments = async (req, res) => {
   try {
     const currentUserId = req.user ? req.user.id : null
@@ -26,7 +26,7 @@ const searchTournaments = async (req, res) => {
       entry_fee_max,
       is_ranking,
       has_available_spots
-    } = req.body
+    } = req.query
 
     // Build where conditions
     const whereConditions = {}
@@ -369,11 +369,14 @@ const getUserRegistrations = async (req, res) => {
   }
 }
 
-// POST /api/tournament-browse/register - Register for a tournament
+// POST /api/tournament-browse/:tournamentId/register - Register for a tournament
 const registerForTournament = async (req, res) => {
   try {
     const currentUserId = req.user.id
-    const { tournament_id, category_id, partner_player_id } = req.body
+    const tournament_id = parseInt(req.params.tournamentId)
+    const { categoryId, partnerPlayerId } = req.body
+    const category_id = categoryId
+    const partner_player_id = partnerPlayerId
 
     const currentPlayer = await Player.findOne({
       where: { user_id: currentUserId }

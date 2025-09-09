@@ -108,25 +108,8 @@ const playerFinderController = {
         offset: parseInt(offset)
       };
 
-      // Add distance calculation if coordinates provided
-      if (location_lat && location_lng && distance_km) {
-        // Simple distance calculation using Haversine formula
-        // In production, you might want to use PostGIS for better performance
-        query.attributes.push([
-          Sequelize.literal(`
-            (6371 * acos(
-              cos(radians(${parseFloat(location_lat)})) * 
-              cos(radians(${parseFloat(location_lat)})) * 
-              cos(radians(${parseFloat(location_lng)}) - radians(${parseFloat(location_lng)})) + 
-              sin(radians(${parseFloat(location_lat)})) * 
-              sin(radians(${parseFloat(location_lat)}))
-            ))
-          `),
-          'distance'
-        ]);
-
-        query.order = [['distance', 'ASC']];
-      }
+      // Note: Distance calculation is not available as players don't have stored location coordinates
+      // The search can only be filtered by state for location-based results
 
       const { count, rows: players } = await Player.findAndCountAll(query);
 
@@ -155,10 +138,7 @@ const playerFinderController = {
           }
         };
 
-        // Add distance if calculated
-        if (player.dataValues && player.dataValues.distance) {
-          playerData.distance = Math.round(player.dataValues.distance * 10) / 10; // Round to 1 decimal
-        }
+        // Distance is not available as players don't have stored location coordinates
 
         return playerData;
       });

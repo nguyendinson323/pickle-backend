@@ -10,6 +10,9 @@ router.use(authenticate)
 // GET /api/player/states - Get list of all states
 router.get('/states', playerController.getStates)
 
+// GET /api/player/dashboard - Get player dashboard data
+router.get('/dashboard', playerController.getDashboard)
+
 // GET /api/player/profile - Get current player's profile
 router.get('/profile', playerController.getProfile)
 

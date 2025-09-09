@@ -21,4 +21,7 @@ router.post('/requests', playerFinderController.sendMatchRequest)
 // PUT /api/player-finder/requests/:id - Respond to or cancel a match request
 router.put('/requests/:id', playerFinderController.updateMatchRequest)
 
+// PUT /api/player-finder/searchability - Update player searchability
+router.put('/searchability', playerFinderController.updateSearchability)
+
 module.exports = router
