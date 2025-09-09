@@ -80,16 +80,39 @@ const playerMessagesController = {
 
         return {
           id: chatRoom.id,
-          name: chatRoom.name,
-          type: chatRoom.type,
+          participant1_id: userId,
+          participant2_id: otherParticipant ? otherParticipant.user.id : null,
+          last_message_id: lastMessage ? lastMessage.id : null,
           created_at: chatRoom.created_at,
+          updated_at: lastMessage ? lastMessage.sent_at : chatRoom.created_at,
           participant: otherParticipant ? {
             id: otherParticipant.user.id,
             full_name: otherParticipant.user.player ? otherParticipant.user.player.full_name : otherParticipant.user.username,
             profile_image: otherParticipant.user.player ? otherParticipant.user.player.profile_photo_url : null,
-            skill_level: otherParticipant.user.player ? otherParticipant.user.player.nrtp_level : null
+            skill_level: otherParticipant.user.player ? otherParticipant.user.player.nrtp_level : null,
+            is_online: false,
+            last_seen: null
           } : null,
-          last_message: lastMessage,
+          last_message: lastMessage ? {
+            id: lastMessage.id,
+            conversation_id: chatRoom.id,
+            sender_id: lastMessage.sender_id,
+            receiver_id: otherParticipant ? otherParticipant.user.id : null,
+            content: lastMessage.content,
+            message_type: lastMessage.message_type || 'text',
+            attachment_url: lastMessage.attachment_url,
+            is_read: false,
+            sent_at: lastMessage.sent_at,
+            edited_at: lastMessage.edited_at,
+            sender: {
+              id: lastMessage.sender.id,
+              full_name: lastMessage.sender.player ? lastMessage.sender.player.full_name : lastMessage.sender.username,
+              profile_image: lastMessage.sender.player ? lastMessage.sender.player.profile_photo_url : null,
+              skill_level: lastMessage.sender.player ? lastMessage.sender.player.nrtp_level : null,
+              is_online: false,
+              last_seen: null
+            }
+          } : null,
           unread_count: unreadCount
         };
       }));
@@ -144,8 +167,30 @@ const playerMessagesController = {
 
       const hasMore = offset + messages.length < count;
 
+      // Transform messages to frontend format
+      const transformedMessages = messages.map(msg => ({
+        id: msg.id,
+        conversation_id: msg.chat_room_id,
+        sender_id: msg.sender_id,
+        receiver_id: null, // Will be calculated from participants
+        content: msg.content,
+        message_type: msg.message_type || 'text',
+        attachment_url: msg.attachment_url,
+        is_read: false, // Will be calculated based on read receipts
+        sent_at: msg.sent_at,
+        edited_at: msg.edited_at,
+        sender: {
+          id: msg.sender.id,
+          full_name: msg.sender.player ? msg.sender.player.full_name : msg.sender.username,
+          profile_image: msg.sender.player ? msg.sender.player.profile_photo_url : null,
+          skill_level: msg.sender.player ? msg.sender.player.nrtp_level : null,
+          is_online: false,
+          last_seen: null
+        }
+      }));
+
       res.json({
-        messages: messages,
+        messages: transformedMessages,
         total_count: count,
         has_more: hasMore
       });
@@ -242,7 +287,29 @@ const playerMessagesController = {
         ]
       });
 
-      res.status(201).json(fullMessage);
+      // Transform to frontend format
+      const transformedMessage = {
+        id: fullMessage.id,
+        conversation_id: fullMessage.chat_room_id,
+        sender_id: fullMessage.sender_id,
+        receiver_id: receiver_id || null,
+        content: fullMessage.content,
+        message_type: fullMessage.message_type || 'text',
+        attachment_url: fullMessage.attachment_url,
+        is_read: false,
+        sent_at: fullMessage.sent_at,
+        edited_at: fullMessage.edited_at,
+        sender: {
+          id: fullMessage.sender.id,
+          full_name: fullMessage.sender.player ? fullMessage.sender.player.full_name : fullMessage.sender.username,
+          profile_image: fullMessage.sender.player ? fullMessage.sender.player.profile_photo_url : null,
+          skill_level: fullMessage.sender.player ? fullMessage.sender.player.nrtp_level : null,
+          is_online: false,
+          last_seen: null
+        }
+      };
+
+      res.status(201).json(transformedMessage);
     } catch (error) {
       console.error('Send message error:', error);
       res.status(500).json({ error: 'Failed to send message' });

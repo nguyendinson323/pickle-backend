@@ -237,10 +237,21 @@ const updateMatch = async (matchId, updates) => {
     throw new Error('Match not found')
   }
 
+  const wasCompleted = match.status === 'completed'
   await match.update(updates)
 
   if (updates.winner_side && updates.status === 'completed') {
     await updateTournamentProgress(match.tournament_id, match.category_id)
+    
+    // Trigger ranking calculations if match was just completed
+    if (!wasCompleted) {
+      try {
+        const RankingService = require('./rankingService')
+        await RankingService.onMatchCompleted(match)
+      } catch (error) {
+        console.error('Error updating rankings after match completion:', error)
+      }
+    }
   }
 
   return match

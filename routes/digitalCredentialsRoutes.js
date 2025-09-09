@@ -13,13 +13,16 @@ router.get('/profile', authenticate, digitalCredentialsController.getPlayerProfi
 router.get('/templates', digitalCredentialsController.getCredentialTemplates);
 
 // Create a new digital credential (protected)
-router.post('/create', authenticate, digitalCredentialsController.createCredential);
+router.post('/create', authenticate, digitalCredentialsController.createDigitalCredential);
 
 // Generate QR code for a credential (protected)
-router.post('/:credentialId/qr-code', authenticate, digitalCredentialsController.generateQrCode);
+router.post('/:credentialId/qr-code', authenticate, digitalCredentialsController.generateCredentialQrCode);
 
 // Verify a credential using QR code (public - for verification by others)
-router.post('/verify', digitalCredentialsController.verifyCredential);
+router.get('/verify/:qrCodeData', digitalCredentialsController.verifyCredential);
+
+// Generate credential card/image (protected)
+router.get('/:credentialId/card', authenticate, digitalCredentialsController.generateCredentialCard);
 
 // Update credential status (protected)
 router.put('/:credentialId/status', authenticate, digitalCredentialsController.updateCredentialStatus);

@@ -1,5 +1,6 @@
 const { User, Player, Tournament, TournamentParticipant, State, sequelize } = require('../models')
 const { Op } = require('sequelize')
+const RankingService = require('../services/rankingService')
 
 // Get player rankings with filters
 const getPlayerRankings = async (req, res) => {
@@ -260,47 +261,15 @@ const recalculateRankings = async (req, res) => {
   try {
     const { stateId } = req.body
 
-    // In a real implementation, this would:
-    // 1. Fetch all completed tournaments since last calculation
-    // 2. Recalculate points based on tournament results
-    // 3. Update all player rankings
-    // 4. Create ranking change records
-
-    const whereClause = stateId ? { state_id: stateId } : {}
+    console.log(`Starting ranking recalculation${stateId ? ` for state ${stateId}` : ' for all states'}...`)
     
-    const players = await Player.findAll({
-      where: whereClause,
-      include: [{ model: User, attributes: ['username'] }]
-    })
-
-    let updatedCount = 0
+    const results = await RankingService.recalculateAllRankings(stateId)
     
-    for (const player of players) {
-      // Mock recalculation logic
-      const newPoints = Math.max(0, player.ranking_points + Math.floor(Math.random() * 200) - 100)
-      
-      await player.update({
-        ranking_points: newPoints,
-        last_ranking_update: new Date()
-      })
-      
-      updatedCount++
-    }
-
-    // Recalculate positions based on new points
-    const allPlayers = await Player.findAll({
-      order: [['ranking_points', 'DESC']]
-    })
-
-    for (let i = 0; i < allPlayers.length; i++) {
-      await allPlayers[i].update({
-        ranking_position: i + 1
-      })
-    }
+    console.log(`Ranking recalculation completed:`, results)
 
     res.json({
       message: 'Rankings recalculated successfully',
-      updatedPlayers: updatedCount,
+      ...results,
       recalculatedAt: new Date().toISOString()
     })
   } catch (error) {
