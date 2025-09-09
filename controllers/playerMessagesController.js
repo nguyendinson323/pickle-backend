@@ -375,7 +375,7 @@ const playerMessagesController = {
 
         return {
           ...player.toJSON(),
-          mutual_connections: 0 // Could calculate real mutual connections later
+          mutual_connections: 0, // Could calculate real mutual connections later
           last_conversation_id: existingConversation ? existingConversation.id : null,
           is_online: player.is_online || false
         };
@@ -438,7 +438,7 @@ const playerMessagesController = {
         
         return {
           ...otherParticipant.toJSON(),
-          mutual_connections: 0 // Could calculate real mutual connections later
+          mutual_connections: 0, // Could calculate real mutual connections later
           last_conversation_id: conv.id,
           is_online: otherParticipant.is_online || false
         };
