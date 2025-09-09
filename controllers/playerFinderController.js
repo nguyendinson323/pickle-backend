@@ -1,6 +1,6 @@
 const { Player, User, State, Club, PlayerMatchRequest, PlayerAvailability, Court } = require('../db/models');
 const { Op, Sequelize } = require('sequelize');
-const nodemailer = require('nodemailer');
+const sgMail = require('@sendgrid/mail');
 const twilio = require('twilio');
 
 const playerFinderController = {
@@ -342,11 +342,11 @@ const playerFinderController = {
     }
   },
 
-  // Respond to match request (accept/reject)
-  async respondToMatchRequest(req, res) {
+  // Update match request (respond or cancel)
+  async updateMatchRequest(req, res) {
     try {
-      const { requestId } = req.params;
-      const { response, response_message } = req.body; // response: 'accepted' or 'rejected'
+      const { id: requestId } = req.params;
+      const { response, response_message, action } = req.body;
       const userId = req.user.id;
 
       const currentUser = await User.findByPk(userId, {
@@ -357,105 +357,91 @@ const playerFinderController = {
         return res.status(404).json({ error: 'Player profile not found' });
       }
 
-      // Find the match request
-      const matchRequest = await PlayerMatchRequest.findOne({
-        where: {
-          id: requestId,
-          receiver_id: currentUser.player.id,
-          status: 'pending'
-        },
-        include: [
-          {
-            model: Player,
-            as: 'requester',
-            include: [{ model: User, as: 'user' }]
+      // Handle cancel action (requester cancels their own request)
+      if (action === 'cancel') {
+        const matchRequest = await PlayerMatchRequest.findOne({
+          where: {
+            id: requestId,
+            requester_id: currentUser.player.id,
+            status: 'pending'
           }
-        ]
-      });
+        });
 
-      if (!matchRequest) {
-        return res.status(404).json({ error: 'Match request not found or already responded' });
-      }
-
-      // Update request status
-      await matchRequest.update({
-        status: response,
-        response_message: response_message || null
-      });
-
-      // Send notification to requester
-      await this.sendMatchRequestResponseNotification(
-        matchRequest.requester.user,
-        currentUser.player,
-        matchRequest,
-        response
-      );
-
-      // Return updated request
-      const updatedRequest = await PlayerMatchRequest.findByPk(requestId, {
-        include: [
-          {
-            model: Player,
-            as: 'requester',
-            include: [
-              { model: User, as: 'user', attributes: ['username'] },
-              { model: State, as: 'state' },
-              { model: Club, as: 'club' }
-            ]
-          },
-          {
-            model: Player,
-            as: 'receiver',
-            include: [
-              { model: User, as: 'user', attributes: ['username'] },
-              { model: State, as: 'state' },
-              { model: Club, as: 'club' }
-            ]
-          },
-          { model: Court, as: 'court' }
-        ]
-      });
-
-      res.json(updatedRequest);
-    } catch (error) {
-      console.error('Respond to match request error:', error);
-      res.status(500).json({ error: 'Failed to respond to match request' });
-    }
-  },
-
-  // Cancel match request
-  async cancelMatchRequest(req, res) {
-    try {
-      const { requestId } = req.params;
-      const userId = req.user.id;
-
-      const currentUser = await User.findByPk(userId, {
-        include: [{ model: Player, as: 'player' }]
-      });
-
-      if (!currentUser || !currentUser.player) {
-        return res.status(404).json({ error: 'Player profile not found' });
-      }
-
-      // Find and update the match request
-      const matchRequest = await PlayerMatchRequest.findOne({
-        where: {
-          id: requestId,
-          requester_id: currentUser.player.id,
-          status: 'pending'
+        if (!matchRequest) {
+          return res.status(404).json({ error: 'Match request not found or cannot be cancelled' });
         }
-      });
 
-      if (!matchRequest) {
-        return res.status(404).json({ error: 'Match request not found or cannot be cancelled' });
+        await matchRequest.update({ status: 'canceled' });
+        return res.json({ message: 'Match request cancelled successfully' });
       }
 
-      await matchRequest.update({ status: 'canceled' });
+      // Handle respond action (receiver accepts/rejects request)
+      if (response) {
+        const matchRequest = await PlayerMatchRequest.findOne({
+          where: {
+            id: requestId,
+            receiver_id: currentUser.player.id,
+            status: 'pending'
+          },
+          include: [
+            {
+              model: Player,
+              as: 'requester',
+              include: [{ model: User, as: 'user' }]
+            }
+          ]
+        });
 
-      res.json({ message: 'Match request cancelled successfully' });
+        if (!matchRequest) {
+          return res.status(404).json({ error: 'Match request not found or already responded' });
+        }
+
+        // Update request status
+        await matchRequest.update({
+          status: response,
+          response_message: response_message || null
+        });
+
+        // Send notification to requester
+        await this.sendMatchRequestResponseNotification(
+          matchRequest.requester.user,
+          currentUser.player,
+          matchRequest,
+          response
+        );
+
+        // Return updated request
+        const updatedRequest = await PlayerMatchRequest.findByPk(requestId, {
+          include: [
+            {
+              model: Player,
+              as: 'requester',
+              include: [
+                { model: User, as: 'user', attributes: ['username'] },
+                { model: State, as: 'state' },
+                { model: Club, as: 'club' }
+              ]
+            },
+            {
+              model: Player,
+              as: 'receiver',
+              include: [
+                { model: User, as: 'user', attributes: ['username'] },
+                { model: State, as: 'state' },
+                { model: Club, as: 'club' }
+              ]
+            },
+            { model: Court, as: 'court' }
+          ]
+        });
+
+        return res.json(updatedRequest);
+      }
+
+      res.status(400).json({ error: 'Invalid action. Use "cancel" or provide "response" (accepted/rejected)' });
     } catch (error) {
-      console.error('Cancel match request error:', error);
-      res.status(500).json({ error: 'Failed to cancel match request' });
+      console.error('Update match request error:', error);
+      res.status(500).json({ error: 'Failed to update match request' });
     }
   },
 

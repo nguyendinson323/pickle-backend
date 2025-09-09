@@ -1,4 +1,4 @@
-const { User, Tournament, TournamentParticipant, Club, Partner, StateCommittee, State, sequelize } = require('../models')
+const { User, Tournament, TournamentParticipant, Club, Partner, StateCommittee, State, sequelize } = require('../db/models')
 const { Op } = require('sequelize')
 
 // Get tournaments with filters and statistics

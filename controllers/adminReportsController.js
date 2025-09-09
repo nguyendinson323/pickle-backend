@@ -19,7 +19,7 @@ const {
   Report,
   ScheduledReport,
   sequelize
-} = require('../models')
+} = require('../db/models')
 const { Op } = require('sequelize')
 const { v4: uuidv4 } = require('uuid')
 const path = require('path')

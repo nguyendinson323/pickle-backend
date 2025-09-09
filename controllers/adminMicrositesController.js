@@ -5,7 +5,7 @@ const {
   Microsite,
   MicrositeAnalytics,
   sequelize
-} = require('../models')
+} = require('../db/models')
 const { Op } = require('sequelize')
 
 // Get all microsites with filtering and statistics

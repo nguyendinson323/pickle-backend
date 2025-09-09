@@ -1,6 +1,6 @@
 const { 
   Partner, PartnerDocument, Invoice, InvoiceLineItem, User
-} = require('../models')
+} = require('../db/models')
 const { Op, fn, col, literal } = require('sequelize')
 const multer = require('multer')
 const path = require('path')

@@ -1,4 +1,4 @@
-const { User, Player, Coach, Club, Partner, StateCommittee, State } = require('../models')
+const { User, Player, Coach, Club, Partner, StateCommittee, State } = require('../db/models')
 const { Op } = require('sequelize')
 
 // Get message templates

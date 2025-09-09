@@ -1,6 +1,6 @@
 const { 
   Partner, Court, Tournament, CourtReservation, TournamentRegistration
-} = require('../models')
+} = require('../db/models')
 const { Op, fn, col, literal } = require('sequelize')
 
 const getPartnerManagementData = async (req, res) => {

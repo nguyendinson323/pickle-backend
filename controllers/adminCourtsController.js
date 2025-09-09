@@ -1,4 +1,4 @@
-const { User, Club, Partner, Court, CourtReservation, State, sequelize } = require('../models')
+const { User, Club, Partner, Court, CourtReservation, State, sequelize } = require('../db/models')
 const { Op } = require('sequelize')
 
 // Get courts with filters and statistics

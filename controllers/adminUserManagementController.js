@@ -1,7 +1,7 @@
 const { 
   User, Player, Coach, Club, Partner, StateCommittee, State,
   TournamentRegistration, CourtReservation, Tournament, Court, Notification
-} = require('../models')
+} = require('../db/models')
 const { Op, fn, col, literal } = require('sequelize')
 const bcrypt = require('bcryptjs')
 

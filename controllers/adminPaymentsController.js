@@ -1,4 +1,4 @@
-const { Payment, User, PaymentMethod, Tournament, Court } = require('../models')
+const { Payment, User, PaymentMethod, Tournament, Court } = require('../db/models')
 const { Op, Sequelize } = require('sequelize')
 
 const adminPaymentsController = {

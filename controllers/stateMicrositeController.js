@@ -64,27 +64,27 @@ const getStateMicrositeData = async (req, res) => {
     }
 
     // Get state statistics
-    const stateId = micrositeInfo.state_committee.id
+    const committeeId = micrositeInfo.state_committee.id
 
     // Count tournaments
     const [totalTournaments, activeTournaments, upcomingTournaments] = await Promise.all([
       Tournament.count({
         where: { 
           organizer_type: 'state',
-          organizer_id: stateId
+          organizer_id: committeeId
         }
       }),
       Tournament.count({
         where: { 
           organizer_type: 'state',
-          organizer_id: stateId,
+          organizer_id: committeeId,
           status: 'ongoing'
         }
       }),
       Tournament.count({
         where: { 
           organizer_type: 'state',
-          organizer_id: stateId,
+          organizer_id: committeeId,
           status: 'upcoming'
         }
       })
@@ -93,26 +93,26 @@ const getStateMicrositeData = async (req, res) => {
     // Count clubs, courts, players, partners, coaches in the state
     const [totalClubs, totalCourts, totalPlayers, totalPartners, totalCoaches] = await Promise.all([
       Club.count({
-        where: { state_id: stateId, is_active: true }
+        where: { state_id: committeeId, is_active: true }
       }),
       Court.count({
         include: [
           {
             model: Club,
             as: 'club',
-            where: { state_id: stateId },
+            where: { state_id: committeeId },
             required: true
           }
         ]
       }),
       Player.count({
-        where: { state_id: stateId }
+        where: { state_id: committeeId }
       }),
       Partner.count({
-        where: { state_id: stateId }
+        where: { state_id: committeeId }
       }),
       Coach.count({
-        where: { state_id: stateId }
+        where: { state_id: committeeId }
       })
     ])
 
@@ -131,7 +131,7 @@ const getStateMicrositeData = async (req, res) => {
     const upcomingEvents = await Tournament.findAll({
       where: {
         organizer_type: 'state',
-        organizer_id: stateId,
+        organizer_id: committeeId,
         start_date: {
           [Op.gte]: new Date()
         }
@@ -152,7 +152,7 @@ const getStateMicrositeData = async (req, res) => {
 
     // Get top clubs in the state
     const clubs = await Club.findAll({
-      where: { state_id: stateId, is_active: true },
+      where: { state_id: committeeId, is_active: true },
       include: [
         {
           model: Court,

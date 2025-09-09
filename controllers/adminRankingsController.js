@@ -1,4 +1,4 @@
-const { User, Player, Tournament, TournamentParticipant, State, sequelize } = require('../models')
+const { User, Player, Tournament, TournamentParticipant, State, sequelize } = require('../db/models')
 const { Op } = require('sequelize')
 const RankingService = require('../services/rankingService')
 
