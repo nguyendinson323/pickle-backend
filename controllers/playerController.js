@@ -135,7 +135,7 @@ const updateProfile = async (req, res) => {
 const updateAccount = async (req, res) => {
   try {
     const userId = req.user.id
-    const { username, email, phone } = req.body
+    const { username, email, phone, is_searchable } = req.body
 
     const user = await User.findByPk(userId)
 
@@ -148,6 +148,7 @@ const updateAccount = async (req, res) => {
     if (username !== undefined) updateData.username = username
     if (email !== undefined) updateData.email = email
     if (phone !== undefined) updateData.phone = phone
+    if (is_searchable !== undefined) updateData.is_searchable = is_searchable
 
     await user.update(updateData)
 
@@ -321,21 +322,50 @@ const getDashboard = async (req, res) => {
       order: [['session_date', 'ASC'], ['start_time', 'ASC']]
     })
 
-    // Construct dashboard response
+    // Construct dashboard response matching PlayerDashboard interface
     const dashboardData = {
       profile: player,
+      upcomingTournaments: tournamentRegistrations
+        .filter(reg => reg.tournament.status === 'upcoming')
+        .map(reg => ({
+          id: reg.id,
+          tournament_id: reg.tournament_id,
+          category_id: reg.category_id,
+          player_id: reg.player_id,
+          partner_player_id: reg.partner_player_id,
+          registration_date: reg.registration_date,
+          payment_status: reg.payment_status,
+          amount_paid: reg.amount_paid,
+          stripe_payment_id: reg.stripe_payment_id,
+          status: reg.status,
+          created_at: reg.created_at,
+          updated_at: reg.updated_at,
+          Tournament: reg.tournament
+        })),
       currentRanking: currentRanking,
+      unreadNotifications: 0, // TODO: Implement notifications system
+      unreadMessages: 0, // TODO: Implement messages system
+      affiliationStatus: player.affiliation_expires_at && new Date(player.affiliation_expires_at) > new Date() ? 'active' : 'expired',
       tournamentWins: tournamentWins,
       totalMatches: totalMatches,
-      upcomingMatches: upcomingTournaments,
-      recentMatches: recentMatches,
-      credentialsCount: credentialsCount,
-      upcomingReservations: upcomingReservations.length,
-      upcomingSessions: upcomingSessions.length,
+      upcomingMatches: upcomingTournaments.map(tournament => ({
+        tournamentName: tournament.name,
+        opponent: 'TBD', // Will be determined when matches are drawn
+        date: new Date(tournament.date).toLocaleDateString(),
+        time: 'TBD', // Time will be set closer to tournament
+        status: tournament.status
+      })),
+      recentMatches: recentMatches.map(match => ({
+        opponent: 'Opponent', // Complex logic needed to determine opponent
+        tournament: match.tournament,
+        date: match.date,
+        result: match.result?.includes('Win') ? 'win' : match.result?.includes('Loss') ? 'loss' : 'draw',
+        score: match.score || 'N/A'
+      })),
       stats: {
-        tournaments_registered: tournamentRegistrations.length,
-        tournaments_completed: tournamentRegistrations.filter(r => r.tournament.status === 'completed').length,
-        win_rate: totalMatches > 0 ? ((tournamentWins / totalMatches) * 100).toFixed(1) : '0.0'
+        tournamentsPlayed: tournamentRegistrations.filter(r => r.tournament.status === 'completed').length,
+        rankingPosition: currentRanking?.current_rank || null,
+        rankingPoints: currentRanking?.points || 0
       }
     }
 
@@ -346,10 +376,37 @@ const getDashboard = async (req, res) => {
   }
 }
 
+// GET /api/player/credentials - Get player's digital credentials
+const getDigitalCredentials = async (req, res) => {
+  try {
+    const userId = req.user.id
+    const player = await Player.findOne({
+      where: { user_id: userId }
+    })
+
+    if (!player) {
+      return res.status(404).json({ message: 'Player profile not found' })
+    }
+
+    const credentials = await DigitalCredential.findAll({
+      where: { 
+        player_id: player.id
+      },
+      order: [['created_at', 'DESC']]
+    })
+
+    res.status(200).json(credentials)
+  } catch (error) {
+    console.error('Error fetching digital credentials:', error)
+    res.status(500).json({ message: 'Failed to fetch digital credentials' })
+  }
+}
+
 module.exports = {
   getStates,
   getProfile,
   updateProfile,
   updateAccount,
-  getDashboard
+  getDashboard,
+  getDigitalCredentials
 }

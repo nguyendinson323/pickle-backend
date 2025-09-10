@@ -397,18 +397,27 @@ const playerMessagesController = {
   async searchPlayers(req, res) {
     try {
       const { q } = req.query;
-      const playerId = req.user.playerId;
+      const userId = req.user.id;
 
       if (!q || q.length < 2) {
         return res.json([]);
       }
 
+      // Get current player
+      const currentUser = await User.findByPk(userId, {
+        include: [{
+          model: Player,
+          as: 'player'
+        }]
+      });
+
+      const currentPlayerId = currentUser && currentUser.player ? currentUser.player.id : null;
+
       const players = await Player.findAll({
         where: {
-          id: { [Op.ne]: playerId }, // Exclude current player
+          id: { [Op.ne]: currentPlayerId }, // Exclude current player
           [Op.or]: [
-            { full_name: { [Op.iLike]: `%${q}%` } },
-            { email: { [Op.iLike]: `%${q}%` } }
+            { full_name: { [Op.iLike]: `%${q}%` } }
           ]
         },
         include: [
@@ -416,34 +425,53 @@ const playerMessagesController = {
             model: Club,
             as: 'club',
             attributes: ['id', 'name']
+          },
+          {
+            model: User,
+            as: 'user',
+            attributes: ['id', 'email']
           }
         ],
         limit: 20,
-        attributes: ['id', 'full_name', 'email', 'profile_image', 'skill_level', 'is_online', 'last_seen']
+        attributes: ['id', 'full_name', 'profile_photo_url', 'nrtp_level']
       });
 
       // Add conversation info and mutual connections (mock)
       const playersWithExtras = await Promise.all(players.map(async (player) => {
-        // Check if there's an existing conversation
-        const existingConversation = await Conversation.findOne({
-          where: {
-            [Op.or]: [
-              {
-                participant1_id: playerId,
-                participant2_id: player.id
-              },
-              {
-                participant1_id: player.id,
-                participant2_id: playerId
+        // Check if there's an existing chat room between these users
+        const userId = req.user.id;
+        
+        // Find existing direct chat room
+        const existingRooms = await ChatRoom.findAll({
+          where: { type: 'direct' },
+          include: [
+            {
+              model: ChatParticipant,
+              as: 'participants',
+              where: {
+                user_id: { [Op.in]: [userId, player.user_id] }
               }
-            ]
-          }
+            }
+          ]
         });
+
+        let lastConversationId = null;
+        
+        // Check if any room has exactly these two participants
+        for (const room of existingRooms) {
+          const participantIds = room.participants.map(p => p.user_id);
+          if (participantIds.length === 2 && 
+              participantIds.includes(userId) && 
+              participantIds.includes(player.user_id)) {
+            lastConversationId = room.id;
+            break;
+          }
+        }
 
         return {
           ...player.toJSON(),
           mutual_connections: 0, // Could calculate real mutual connections later
-          last_conversation_id: existingConversation ? existingConversation.id : null,
+          last_conversation_id: lastConversationId,
           is_online: player.is_online || false
         };
       }));
@@ -458,58 +486,71 @@ const playerMessagesController = {
   // Get player contacts
   async getContacts(req, res) {
     try {
-      const playerId = req.user.playerId;
+      const userId = req.user.id;
 
-      // Get players who have had conversations with current user
-      const conversationParticipants = await Conversation.findAll({
-        where: {
-          [Op.or]: [
-            { participant1_id: playerId },
-            { participant2_id: playerId }
-          ]
-        },
+      // Get chat rooms where user is a participant
+      const userChatRooms = await ChatParticipant.findAll({
+        where: { user_id: userId },
         include: [
           {
-            model: Player,
-            as: 'participant1',
-            attributes: ['id', 'full_name', 'email', 'profile_image', 'skill_level', 'is_online', 'last_seen'],
+            model: ChatRoom,
+            as: 'chatRoom',
+            where: { type: 'direct' },
             include: [
               {
-                model: Club,
-                as: 'club',
-                attributes: ['id', 'name']
-              }
-            ]
-          },
-          {
-            model: Player,
-            as: 'participant2',
-            attributes: ['id', 'full_name', 'email', 'profile_image', 'skill_level', 'is_online', 'last_seen'],
-            include: [
-              {
-                model: Club,
-                as: 'club',
-                attributes: ['id', 'name']
+                model: ChatParticipant,
+                as: 'participants',
+                where: {
+                  user_id: { [Op.ne]: userId }
+                },
+                include: [
+                  {
+                    model: User,
+                    as: 'user',
+                    include: [
+                      {
+                        model: Player,
+                        as: 'player',
+                        attributes: ['id', 'full_name', 'profile_photo_url', 'nrtp_level'],
+                        include: [
+                          {
+                            model: Club,
+                            as: 'club',
+                            attributes: ['id', 'name']
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
               }
             ]
           }
         ],
-        order: [['updated_at', 'DESC']],
+        order: [['last_read', 'DESC']],
         limit: 50
       });
 
-      const contacts = conversationParticipants.map(conv => {
-        const otherParticipant = conv.participant1_id === playerId 
-          ? conv.participant2 
-          : conv.participant1;
+      const contacts = userChatRooms.map(userChat => {
+        const chatRoom = userChat.chatRoom;
+        const otherParticipant = chatRoom.participants[0]; // Should only be one other participant in direct chat
         
-        return {
-          ...otherParticipant.toJSON(),
-          mutual_connections: 0, // Could calculate real mutual connections later
-          last_conversation_id: conv.id,
-          is_online: otherParticipant.is_online || false
-        };
-      });
+        if (otherParticipant && otherParticipant.user && otherParticipant.user.player) {
+          return {
+            id: otherParticipant.user.player.id,
+            full_name: otherParticipant.user.player.full_name,
+            email: otherParticipant.user.email || '',
+            profile_image: otherParticipant.user.player.profile_photo_url,
+            skill_level: otherParticipant.user.player.nrtp_level,
+            is_online: false,
+            last_seen: null,
+            club: otherParticipant.user.player.club,
+            mutual_connections: 0,
+            last_conversation_id: chatRoom.id
+          };
+        }
+        return null;
+      }).filter(contact => contact !== null);
 
       res.json(contacts);
     } catch (error) {
@@ -522,34 +563,24 @@ const playerMessagesController = {
   async markMessagesAsRead(req, res) {
     try {
       const { conversationId } = req.params;
-      const playerId = req.user.playerId;
+      const userId = req.user.id;
 
-      // Verify user is part of this conversation
-      const conversation = await Conversation.findOne({
+      // Verify user is part of this chat room
+      const userParticipation = await ChatParticipant.findOne({
         where: {
-          id: conversationId,
-          [Op.or]: [
-            { participant1_id: playerId },
-            { participant2_id: playerId }
-          ]
+          chat_room_id: conversationId,
+          user_id: userId
         }
       });
 
-      if (!conversation) {
-        return res.status(404).json({ error: 'Conversation not found' });
+      if (!userParticipation) {
+        return res.status(404).json({ error: 'Chat room not found or access denied' });
       }
 
-      // Mark all messages in this conversation as read for current user
-      await PlayerMessage.update(
-        { is_read: true },
-        {
-          where: {
-            conversation_id: conversationId,
-            receiver_id: playerId,
-            is_read: false
-          }
-        }
-      );
+      // Update the user's last_read timestamp for this chat room
+      await userParticipation.update({
+        last_read: new Date()
+      });
 
       res.json({ message: 'Messages marked as read' });
     } catch (error) {
@@ -562,12 +593,12 @@ const playerMessagesController = {
   async deleteMessage(req, res) {
     try {
       const { messageId } = req.params;
-      const playerId = req.user.playerId;
+      const userId = req.user.id;
 
-      const message = await PlayerMessage.findOne({
+      const message = await ChatMessage.findOne({
         where: {
           id: messageId,
-          sender_id: playerId
+          sender_id: userId
         }
       });
 

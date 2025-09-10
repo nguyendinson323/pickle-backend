@@ -7,7 +7,7 @@ const { authenticate } = require('../middlewares/authMiddleware');
 router.get('/stats', authenticate, playerRankingsController.getPlayerStats);
 
 // Get player's current rankings across different categories (protected)
-router.get('/my-rankings', authenticate, playerRankingsController.getPlayerRankings);
+router.get('/', authenticate, playerRankingsController.getPlayerRankings);
 
 // Get recent match results (protected)
 router.get('/recent-matches', authenticate, playerRankingsController.getRecentMatches);

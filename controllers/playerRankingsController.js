@@ -5,7 +5,14 @@ const playerRankingsController = {
   // Get player's comprehensive statistics
   async getPlayerStats(req, res) {
     try {
-      const playerId = req.user.playerId;
+      const userId = req.userId;
+      const player = await Player.findOne({ where: { user_id: userId } });
+      
+      if (!player) {
+        return res.status(404).json({ error: 'Player profile not found' });
+      }
+      
+      const playerId = player.id;
       const { timeframe = '30d' } = req.query;
 
       // Calculate date range based on timeframe
@@ -98,6 +105,27 @@ const playerRankingsController = {
 
       const totalMatches = playerMatches.length;
       const winPercentage = totalMatches > 0 ? (wins / totalMatches) * 100 : 0;
+      
+      // Calculate total points scored and average
+      let pointsScored = 0;
+      let pointsAgainst = 0;
+      
+      playerMatches.forEach(match => {
+        // Simple point calculation from score (would need more detailed scoring data)
+        if (match.score) {
+          const scoreMatch = match.score.match(/(\d+)-(\d+)/);
+          if (scoreMatch) {
+            const isPlayerOnSide1 = match.player1_id === playerId;
+            const playerScore = isPlayerOnSide1 ? parseInt(scoreMatch[1]) : parseInt(scoreMatch[2]);
+            const opponentScore = isPlayerOnSide1 ? parseInt(scoreMatch[2]) : parseInt(scoreMatch[1]);
+            pointsScored += playerScore;
+            pointsAgainst += opponentScore;
+          }
+        }
+      });
+      
+      const averagePointsPerMatch = totalMatches > 0 ? pointsScored / totalMatches : 0;
+      const pointDifferential = pointsScored - pointsAgainst;
 
       const stats = {
         player_id: playerId,
@@ -110,6 +138,28 @@ const playerRankingsController = {
         longest_loss_streak: longestLossStreak,
         total_tournaments: totalTournaments.size,
         tournament_wins: tournamentWins,
+        finals_appearances: 0, // Would need tournament results data
+        semifinal_appearances: 0, // Would need tournament results data
+        points_scored: pointsScored,
+        points_against: pointsAgainst,
+        point_differential: pointDifferential,
+        average_points_per_match: Math.round(averagePointsPerMatch * 10) / 10,
+        games_won: 0, // Would need detailed match data
+        games_lost: 0, // Would need detailed match data
+        sets_won: 0, // Would need detailed match data
+        sets_lost: 0, // Would need detailed match data
+        aces: 0, // Would need detailed match statistics
+        double_faults: 0, // Would need detailed match statistics
+        unforced_errors: 0, // Would need detailed match statistics
+        winners: 0, // Would need detailed match statistics
+        break_points_won: 0, // Would need detailed match statistics
+        break_points_faced: 0, // Would need detailed match statistics
+        service_points_won: 0, // Would need detailed match statistics
+        service_points_played: 0, // Would need detailed match statistics
+        return_points_won: 0, // Would need detailed match statistics
+        return_points_played: 0, // Would need detailed match statistics
+        net_points_won: 0, // Would need detailed match statistics
+        net_points_played: 0, // Would need detailed match statistics
         updated_at: new Date().toISOString()
       };
 
@@ -123,10 +173,17 @@ const playerRankingsController = {
   // Get player's current rankings across different categories
   async getPlayerRankings(req, res) {
     try {
-      const playerId = req.user.playerId;
+      const userId = req.userId;
+      const player = await Player.findOne({ where: { user_id: userId } });
+      
+      if (!player) {
+        return res.status(404).json({ error: 'Player profile not found' });
+      }
+      
+      const playerId = player.id;
 
-      // Get player info for rankings
-      const player = await Player.findByPk(playerId, {
+      // Get player info for rankings - refresh with associations
+      const playerWithAssociations = await Player.findByPk(playerId, {
         include: [
           {
             model: Club,
@@ -141,7 +198,7 @@ const playerRankingsController = {
         ]
       });
 
-      if (!player) {
+      if (!playerWithAssociations) {
         return res.status(404).json({ error: 'Player not found' });
       }
 
@@ -248,12 +305,12 @@ const playerRankingsController = {
           region: 'National',
           last_updated: ranking.updated_at,
           player: {
-            id: player.id,
-            full_name: player.full_name,
-            profile_image: player.profile_photo_url,
-            skill_level: player.nrtp_level,
-            club: player.club,
-            state: player.state
+            id: playerWithAssociations.id,
+            full_name: playerWithAssociations.full_name,
+            profile_image: playerWithAssociations.profile_photo_url,
+            skill_level: playerWithAssociations.nrtp_level,
+            club: playerWithAssociations.club,
+            state: playerWithAssociations.state
           },
           matches_played_period: ranking.tournaments_played,
           recent_performance: {
@@ -279,7 +336,14 @@ const playerRankingsController = {
   // Get recent match results
   async getRecentMatches(req, res) {
     try {
-      const playerId = req.user.playerId;
+      const userId = req.userId;
+      const player = await Player.findOne({ where: { user_id: userId } });
+      
+      if (!player) {
+        return res.status(404).json({ error: 'Player profile not found' });
+      }
+      
+      const playerId = player.id;
       const { limit = 10 } = req.query;
 
       // Get actual recent matches from database
@@ -378,7 +442,14 @@ const playerRankingsController = {
   // Get tournament performance history
   async getTournamentHistory(req, res) {
     try {
-      const playerId = req.user.playerId;
+      const userId = req.userId;
+      const player = await Player.findOne({ where: { user_id: userId } });
+      
+      if (!player) {
+        return res.status(404).json({ error: 'Player profile not found' });
+      }
+      
+      const playerId = player.id;
       const { timeframe = '1y' } = req.query;
 
       // Calculate date range
@@ -524,7 +595,14 @@ const playerRankingsController = {
   // Get detailed performance metrics
   async getPerformanceMetrics(req, res) {
     try {
-      const playerId = req.user.playerId;
+      const userId = req.userId;
+      const player = await Player.findOne({ where: { user_id: userId } });
+      
+      if (!player) {
+        return res.status(404).json({ error: 'Player profile not found' });
+      }
+      
+      const playerId = player.id;
       const { timeframe = '30d' } = req.query;
 
       // Calculate date ranges
@@ -853,7 +931,14 @@ const playerRankingsController = {
   async searchPlayers(req, res) {
     try {
       const { q } = req.query;
-      const playerId = req.user.playerId;
+      const userId = req.userId;
+      const player = await Player.findOne({ where: { user_id: userId } });
+      
+      if (!player) {
+        return res.status(404).json({ error: 'Player profile not found' });
+      }
+      
+      const playerId = player.id;
 
       if (!q || q.length < 2) {
         return res.json([]);

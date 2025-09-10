@@ -99,7 +99,7 @@ const getClubCourtsData = async (req, res) => {
         new Date(reservation.date) >= firstDayOfMonth && 
         reservation.payment_status === 'paid'
       )
-      .reduce((sum, reservation) => sum + parseFloat(reservation.total_amount || 0), 0)
+      .reduce((sum, reservation) => sum + parseFloat(reservation.amount || 0), 0)
 
     // Occupancy rate calculation (current month)
     const currentMonthReservations = reservations.filter(reservation => 
@@ -150,8 +150,7 @@ const createCourt = async (req, res) => {
       indoor,
       lights,
       amenities,
-      description,
-      hourly_rate
+      description
     } = req.body
     const userId = req.user.id
 
@@ -176,8 +175,7 @@ const createCourt = async (req, res) => {
       indoor: indoor || false,
       lights: lights || false,
       amenities,
-      description,
-      hourly_rate: hourly_rate || 0
+      description
     })
 
     // Create default schedules (Monday to Sunday, 8 AM to 8 PM)

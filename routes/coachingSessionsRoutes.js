@@ -22,7 +22,7 @@ router.get('/my-bookings', authenticate, coachingSessionsController.getMyBooking
 router.post('/book', authenticate, coachingSessionsController.bookSession);
 
 // Cancel a session booking (protected)
-router.put('/bookings/:bookingId/cancel', authenticate, coachingSessionsController.cancelBooking);
+router.put('/bookings/:sessionId/cancel', authenticate, coachingSessionsController.cancelBooking);
 
 // Submit session review and feedback (protected)
 router.post('/:sessionId/review', authenticate, coachingSessionsController.submitReview);

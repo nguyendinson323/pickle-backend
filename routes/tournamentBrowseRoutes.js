@@ -6,19 +6,16 @@ const tournamentBrowseController = require('../controllers/tournamentBrowseContr
 // GET /api/tournament-browse - Search tournaments (public with optional auth)
 router.get('/', optionalAuthenticate, tournamentBrowseController.searchTournaments)
 
+// GET /api/tournament-browse/registrations - Get user's tournament registrations (protected)
+router.get('/registrations', authenticate, tournamentBrowseController.getUserRegistrations)
+
 // GET /api/tournament-browse/:id - Get tournament details (public with optional auth)
 router.get('/:id', optionalAuthenticate, tournamentBrowseController.getTournamentDetails)
 
-// Protected routes (require authentication)
-router.use(authenticate)
+// POST /api/tournament-browse/:tournamentId/register - Register for a tournament (protected)
+router.post('/:tournamentId/register', authenticate, tournamentBrowseController.registerForTournament)
 
-// GET /api/tournament-browse/registrations - Get user's tournament registrations
-router.get('/registrations', tournamentBrowseController.getUserRegistrations)
-
-// POST /api/tournament-browse/:tournamentId/register - Register for a tournament
-router.post('/:tournamentId/register', tournamentBrowseController.registerForTournament)
-
-// PUT /api/tournament-browse/registrations/:id/withdraw - Withdraw from tournament
-router.put('/registrations/:id/withdraw', tournamentBrowseController.withdrawFromTournament)
+// PUT /api/tournament-browse/registrations/:id/withdraw - Withdraw from tournament (protected)
+router.put('/registrations/:id/withdraw', authenticate, tournamentBrowseController.withdrawFromTournament)
 
 module.exports = router

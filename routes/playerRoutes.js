@@ -22,6 +22,9 @@ router.put('/profile', playerController.updateProfile)
 // PUT /api/player/account - Update user account information
 router.put('/account', playerController.updateAccount)
 
+// GET /api/player/credentials - Get player's digital credentials
+router.get('/credentials', playerController.getDigitalCredentials)
+
 // ==================== MEMBERSHIP ROUTES ====================
 
 // GET /api/player/membership - Get player membership data
