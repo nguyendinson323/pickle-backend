@@ -9,6 +9,7 @@ const adminMicrositesController = require('../controllers/adminMicrositesControl
 const adminReportsController = require('../controllers/adminReportsController')
 const adminPaymentsController = require('../controllers/adminPaymentsController')
 const adminDashboardController = require('../controllers/adminDashboardController')
+const adminProfileController = require('../controllers/adminProfileController')
 const { authenticate } = require('../middlewares/authMiddleware')
 const { authorize } = require('../middlewares/authorizationMiddleware')
 
@@ -18,6 +19,13 @@ router.use(authorize('admin'))
 // Dashboard Routes
 router.get('/dashboard', adminDashboardController.getDashboardData)
 router.put('/approvals/:id', adminDashboardController.updateApproval)
+
+// Admin Profile Routes
+router.get('/profile', adminProfileController.getProfile)
+router.put('/profile', adminProfileController.updateProfile)
+router.put('/profile/password', adminProfileController.changePassword)
+router.put('/profile/security', adminProfileController.updateSecuritySettings)
+router.get('/profile/activity', adminProfileController.getActivityLog)
 
 // User Management Routes
 router.get('/users', adminUserManagementController.getUsers)
@@ -46,6 +54,9 @@ router.get('/messaging/delivery-report/:id', adminMessagingController.getMessage
 // Rankings Routes
 router.get('/rankings/players', adminRankingsController.getPlayerRankings)
 router.get('/rankings/changes', adminRankingsController.getRankingChanges)
+router.get('/rankings/stats', adminRankingsController.getRankingStats)
+router.get('/rankings/periods', adminRankingsController.getRankingPeriods)
+router.get('/rankings/categories', adminRankingsController.getRankingCategories)
 router.post('/rankings/adjust', adminRankingsController.adjustRanking)
 router.post('/rankings/recalculate', adminRankingsController.recalculateRankings)
 router.post('/rankings/freeze', adminRankingsController.freezeRankings)
@@ -97,9 +108,6 @@ router.post('/microsites/:id/notify', adminMicrositesController.sendMicrositeNot
 router.get('/reports', adminReportsController.getReports)
 router.post('/reports/generate', adminReportsController.generateReport)
 router.post('/reports/preview', adminReportsController.getReportPreview)
-router.get('/reports/:id/status', adminReportsController.getReportStatus)
-router.get('/reports/:id/download', adminReportsController.downloadReport)
-router.delete('/reports/:id', adminReportsController.deleteReport)
 
 // Payments Routes
 router.get('/payments', adminPaymentsController.getPayments)

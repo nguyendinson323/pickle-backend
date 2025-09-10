@@ -1,4 +1,4 @@
-const { User, Tournament, TournamentParticipant, Club, Partner, StateCommittee, State, sequelize } = require('../db/models')
+const { User, Tournament, TournamentRegistration, TournamentCategory, Club, Partner, State, Player, Coach, sequelize } = require('../db/models')
 const { Op } = require('sequelize')
 
 // Get tournaments with filters and statistics
@@ -62,21 +62,29 @@ const getTournaments = async (req, res) => {
       where: whereConditions,
       include: [
         {
-          model: Club,
-          as: 'Club',
-          attributes: ['id', 'business_name'],
-          required: false
-        },
-        {
-          model: Partner,
-          as: 'Partner',
-          attributes: ['id', 'business_name'],
-          required: false
-        },
-        {
-          model: StateCommittee,
-          as: 'StateCommittee',
-          attributes: ['id', 'name'],
+          model: User,
+          as: 'organizer',
+          attributes: ['id', 'username', 'email', 'role'],
+          include: [
+            {
+              model: Club,
+              as: 'club',
+              attributes: ['id', 'name'],
+              required: false
+            },
+            {
+              model: Partner,
+              as: 'partner', 
+              attributes: ['id', 'business_name'],
+              required: false
+            },
+            {
+              model: State,
+              as: 'state',
+              attributes: ['id', 'name'],
+              required: false
+            }
+          ],
           required: false
         }
       ],
@@ -85,21 +93,48 @@ const getTournaments = async (req, res) => {
     })
 
     // Transform data for frontend
-    const transformedTournaments = tournaments.map(tournament => ({
-      id: tournament.id,
-      name: tournament.name,
-      organizer_id: tournament.organizer_id,
-      organizer_name: tournament.Club?.business_name || tournament.Partner?.business_name || tournament.StateCommittee?.name || 'Unknown',
-      organizer_type: tournament.Club ? 'club' : tournament.Partner ? 'partner' : tournament.StateCommittee ? 'state' : 'unknown',
-      start_date: tournament.start_date,
-      end_date: tournament.end_date,
-      location: tournament.location,
-      status: tournament.status,
-      total_participants: tournament.total_participants || 0,
-      entry_fee: tournament.entry_fee || 0,
-      total_revenue: (tournament.total_participants || 0) * (tournament.entry_fee || 0),
-      prize_pool: tournament.prize_pool || 0
-    }))
+    const transformedTournaments = tournaments.map(tournament => {
+      const organizer = tournament.organizer
+      let organizerName = 'Unknown'
+      let organizerType = 'unknown'
+      
+      if (organizer) {
+        organizerType = organizer.role
+        if (organizer.role === 'club' && organizer.club) {
+          organizerName = organizer.club.name
+        } else if (organizer.role === 'partner' && organizer.partner) {
+          organizerName = organizer.partner.business_name
+        } else if (organizer.role === 'state' && organizer.state) {
+          organizerName = organizer.state.name
+        } else {
+          organizerName = organizer.username
+        }
+      }
+      
+      return {
+        id: tournament.id,
+        name: tournament.name,
+        organizer_id: tournament.organizer_id,
+        organizer_name: organizerName,
+        organizer_type: organizerType,
+        start_date: tournament.start_date,
+        end_date: tournament.end_date,
+        location: tournament.location,
+        venue_name: tournament.venue_name,
+        venue_address: tournament.venue_address,
+        status: tournament.status,
+        entry_fee: tournament.entry_fee || 0,
+        max_participants: tournament.max_participants || 0,
+        prize_pool: tournament.prize_pool || 0,
+        registration_start: tournament.registration_start,
+        registration_end: tournament.registration_end,
+        banner_url: tournament.banner_url,
+        is_ranking: tournament.is_ranking,
+        description: tournament.description,
+        total_participants: 0, // Will be calculated
+        total_revenue: 0 // Will be calculated
+      }
+    })
 
     // Apply organizer filter after transformation
     let filteredTournaments = transformedTournaments
@@ -107,6 +142,30 @@ const getTournaments = async (req, res) => {
       filteredTournaments = transformedTournaments.filter(tournament =>
         tournament.organizer_name.toLowerCase().includes(organizer.toLowerCase())
       )
+    }
+
+    // Get participant counts for all tournaments
+    const tournamentIds = filteredTournaments.map(t => t.id)
+    if (tournamentIds.length > 0) {
+      const participantCounts = await TournamentRegistration.findAll({
+        where: { tournament_id: { [Op.in]: tournamentIds } },
+        attributes: [
+          'tournament_id',
+          [sequelize.fn('COUNT', sequelize.col('id')), 'participant_count'],
+          [sequelize.fn('SUM', sequelize.col('amount_paid')), 'total_revenue']
+        ],
+        group: ['tournament_id']
+      })
+
+      // Update tournaments with actual counts
+      filteredTournaments = filteredTournaments.map(tournament => {
+        const counts = participantCounts.find(p => p.tournament_id === tournament.id)
+        return {
+          ...tournament,
+          total_participants: counts ? parseInt(counts.dataValues.participant_count) : 0,
+          total_revenue: counts ? parseFloat(counts.dataValues.total_revenue || 0) : 0
+        }
+      })
     }
 
     // Apply participants filter
@@ -140,14 +199,14 @@ const getTournaments = async (req, res) => {
     const stats = {
       totalTournaments,
       activeTournaments: statusCounts.ongoing || 0,
-      upcomingTournaments: statusCounts.published || 0,
+      upcomingTournaments: statusCounts.upcoming || 0,
       completedTournaments: statusCounts.completed || 0,
-      cancelledTournaments: statusCounts.cancelled || 0,
+      cancelledTournaments: statusCounts.canceled || 0,
       totalParticipants,
       totalRevenue,
       averageParticipants: totalTournaments > 0 ? Math.round(totalParticipants / totalTournaments) : 0,
       topOrganizer,
-      pendingApprovals: statusCounts.draft || 0
+      pendingApprovals: 0
     }
 
     res.json({
@@ -181,18 +240,28 @@ const getTournamentParticipants = async (req, res) => {
       whereConditions.payment_status = paymentStatus
     }
 
-    const participants = await TournamentParticipant.findAll({
+    const registrations = await TournamentRegistration.findAll({
       where: whereConditions,
       include: [
-        {
-          model: User,
-          attributes: ['id', 'username', 'role', 'email'],
-          required: true
-        },
         {
           model: Tournament,
           attributes: ['id', 'name', 'entry_fee'],
           required: true
+        },
+        {
+          model: Player,
+          attributes: ['id', 'full_name'],
+          include: [{
+            model: User,
+            attributes: ['id', 'username', 'email', 'role'],
+            required: true
+          }],
+          required: true
+        },
+        {
+          model: TournamentCategory,
+          attributes: ['id', 'name', 'gender', 'min_skill_level', 'max_skill_level'],
+          required: false
         }
       ],
       order: [['registration_date', 'DESC']],
@@ -200,17 +269,18 @@ const getTournamentParticipants = async (req, res) => {
     })
 
     // Transform data for frontend
-    const transformedParticipants = participants.map(participant => ({
-      id: participant.id,
-      tournament_id: participant.tournament_id,
-      user_id: participant.user_id,
-      user_name: participant.User.username,
-      user_type: participant.User.role,
-      registration_date: participant.registration_date,
-      status: participant.status,
-      seed: participant.seed,
-      payment_status: participant.payment_status || 'pending',
-      amount_paid: participant.amount_paid || participant.Tournament.entry_fee || 0
+    const transformedParticipants = registrations.map(registration => ({
+      id: registration.id,
+      tournament_id: registration.tournament_id,
+      user_id: registration.Player.User.id,
+      user_name: registration.Player.full_name || registration.Player.User.username,
+      user_type: registration.Player.User.role,
+      registration_date: registration.registration_date,
+      status: registration.status,
+      seed: null,
+      payment_status: registration.payment_status || 'pending',
+      amount_paid: registration.amount_paid || 0,
+      category_name: registration.TournamentCategory?.name || 'General'
     }))
 
     res.json(transformedParticipants)
@@ -235,35 +305,45 @@ const getAllParticipants = async (req, res) => {
       whereConditions.payment_status = paymentStatus
     }
 
-    const participants = await TournamentParticipant.findAll({
+    const registrations = await TournamentRegistration.findAll({
       where: whereConditions,
       include: [
-        {
-          model: User,
-          attributes: ['id', 'username', 'role', 'email'],
-          required: true
-        },
         {
           model: Tournament,
           attributes: ['id', 'name', 'entry_fee'],
           required: true
+        },
+        {
+          model: Player,
+          attributes: ['id', 'full_name'],
+          include: [{
+            model: User,
+            attributes: ['id', 'username', 'email', 'role'],
+            required: true
+          }],
+          required: true
+        },
+        {
+          model: TournamentCategory,
+          attributes: ['id', 'name'],
+          required: false
         }
       ],
       order: [['registration_date', 'DESC']],
       limit: 1000
     })
 
-    const transformedParticipants = participants.map(participant => ({
-      id: participant.id,
-      tournament_id: participant.tournament_id,
-      user_id: participant.user_id,
-      user_name: participant.User.username,
-      user_type: participant.User.role,
-      registration_date: participant.registration_date,
-      status: participant.status,
-      seed: participant.seed,
-      payment_status: participant.payment_status || 'pending',
-      amount_paid: participant.amount_paid || participant.Tournament.entry_fee || 0
+    const transformedParticipants = registrations.map(registration => ({
+      id: registration.id,
+      tournament_id: registration.tournament_id,
+      user_id: registration.Player.User.id,
+      user_name: registration.Player.full_name || registration.Player.User.username,
+      user_type: registration.Player.User.role,
+      registration_date: registration.registration_date,
+      status: registration.status,
+      seed: null,
+      payment_status: registration.payment_status || 'pending',
+      amount_paid: registration.amount_paid || 0
     }))
 
     res.json(transformedParticipants)
@@ -281,21 +361,29 @@ const getTournamentDetails = async (req, res) => {
     const tournament = await Tournament.findByPk(id, {
       include: [
         {
-          model: Club,
-          as: 'Club',
-          attributes: ['id', 'business_name'],
-          required: false
-        },
-        {
-          model: Partner,
-          as: 'Partner',
-          attributes: ['id', 'business_name'],
-          required: false
-        },
-        {
-          model: StateCommittee,
-          as: 'StateCommittee',
-          attributes: ['id', 'name'],
+          model: User,
+          as: 'organizer',
+          attributes: ['id', 'username', 'email', 'role'],
+          include: [
+            {
+              model: Club,
+              as: 'club',
+              attributes: ['id', 'name'],
+              required: false
+            },
+            {
+              model: Partner,
+              as: 'partner',
+              attributes: ['id', 'business_name'],
+              required: false
+            },
+            {
+              model: State,
+              as: 'state',
+              attributes: ['id', 'name'],
+              required: false
+            }
+          ],
           required: false
         }
       ]
@@ -306,26 +394,55 @@ const getTournamentDetails = async (req, res) => {
     }
 
     // Get participant count
-    const participantCount = await TournamentParticipant.count({
+    const participantCount = await TournamentRegistration.count({
       where: { tournament_id: id }
     })
+
+    // Get total revenue from actual registrations
+    const totalRevenue = await TournamentRegistration.sum('amount_paid', {
+      where: { tournament_id: id, payment_status: 'paid' }
+    }) || 0
+
+    const organizer = tournament.organizer
+    let organizerName = 'Unknown'
+    let organizerType = 'unknown'
+    
+    if (organizer) {
+      organizerType = organizer.role
+      if (organizer.role === 'club' && organizer.club) {
+        organizerName = organizer.club.name
+      } else if (organizer.role === 'partner' && organizer.partner) {
+        organizerName = organizer.partner.business_name
+      } else if (organizer.role === 'state' && organizer.state) {
+        organizerName = organizer.state.name
+      } else {
+        organizerName = organizer.username
+      }
+    }
 
     const tournamentDetails = {
       id: tournament.id,
       name: tournament.name,
       organizer_id: tournament.organizer_id,
-      organizer_name: tournament.Club?.business_name || tournament.Partner?.business_name || tournament.StateCommittee?.name || 'Unknown',
-      organizer_type: tournament.Club ? 'club' : tournament.Partner ? 'partner' : tournament.StateCommittee ? 'state' : 'unknown',
+      organizer_name: organizerName,
+      organizer_type: organizerType,
       start_date: tournament.start_date,
       end_date: tournament.end_date,
+      registration_start: tournament.registration_start,
+      registration_end: tournament.registration_end,
       location: tournament.location,
+      venue_name: tournament.venue_name,
+      venue_address: tournament.venue_address,
       status: tournament.status,
       total_participants: participantCount,
+      max_participants: tournament.max_participants,
       entry_fee: tournament.entry_fee || 0,
-      total_revenue: participantCount * (tournament.entry_fee || 0),
+      total_revenue: totalRevenue,
       prize_pool: tournament.prize_pool || 0,
       description: tournament.description,
-      rules: tournament.rules,
+      banner_url: tournament.banner_url,
+      is_ranking: tournament.is_ranking,
+      ranking_multiplier: tournament.ranking_multiplier,
       created_at: tournament.created_at,
       updated_at: tournament.updated_at
     }
@@ -343,7 +460,7 @@ const updateTournamentStatus = async (req, res) => {
     const { id } = req.params
     const { status, reason } = req.body
 
-    const validStatuses = ['draft', 'published', 'ongoing', 'completed', 'cancelled']
+    const validStatuses = ['upcoming', 'ongoing', 'completed', 'canceled']
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: 'Invalid tournament status' })
     }
@@ -385,10 +502,8 @@ const approveTournament = async (req, res) => {
     }
 
     await tournament.update({
-      status: 'published',
-      is_approved: true,
-      approved_at: new Date(),
-      approved_by: req.user.id
+      status: 'upcoming',
+      updated_at: new Date()
     })
 
     res.json({
@@ -421,11 +536,8 @@ const rejectTournament = async (req, res) => {
     }
 
     await tournament.update({
-      status: 'cancelled',
-      is_approved: false,
-      rejection_reason: reason,
-      rejected_at: new Date(),
-      rejected_by: req.user.id
+      status: 'canceled',
+      updated_at: new Date()
     })
 
     res.json({
@@ -450,16 +562,14 @@ const cancelTournament = async (req, res) => {
     }
 
     await tournament.update({
-      status: 'cancelled',
-      cancellation_reason: reason,
-      cancelled_at: new Date(),
-      cancelled_by: req.user.id
+      status: 'canceled',
+      updated_at: new Date()
     })
 
     // In real implementation, process refunds for participants
-    await TournamentParticipant.update(
+    await TournamentRegistration.update(
       { 
-        status: 'withdrew',
+        status: 'withdrawn',
         payment_status: 'refunded'
       },
       { where: { tournament_id: id, status: 'registered' } }
@@ -486,7 +596,7 @@ const updateParticipantStatus = async (req, res) => {
       return res.status(400).json({ message: 'Invalid participant status' })
     }
 
-    const participant = await TournamentParticipant.findByPk(id)
+    const participant = await TournamentRegistration.findByPk(id)
     if (!participant) {
       return res.status(404).json({ message: 'Participant not found' })
     }
@@ -529,7 +639,7 @@ const bulkUpdateParticipants = async (req, res) => {
 
     switch (action) {
       case 'confirm':
-        await TournamentParticipant.update(
+        await TournamentRegistration.update(
           { 
             status: 'confirmed',
             updated_at: new Date()
@@ -540,9 +650,9 @@ const bulkUpdateParticipants = async (req, res) => {
         break
 
       case 'check_in':
-        await TournamentParticipant.update(
+        await TournamentRegistration.update(
           { 
-            status: 'checked_in',
+            status: 'confirmed',
             updated_at: new Date()
           },
           { where: { id: { [Op.in]: participantIds } } }
@@ -551,9 +661,9 @@ const bulkUpdateParticipants = async (req, res) => {
         break
 
       case 'disqualify':
-        await TournamentParticipant.update(
+        await TournamentRegistration.update(
           { 
-            status: 'disqualified',
+            status: 'withdrawn',
             updated_at: new Date()
           },
           { where: { id: { [Op.in]: participantIds } } }
@@ -562,9 +672,9 @@ const bulkUpdateParticipants = async (req, res) => {
         break
 
       case 'withdraw':
-        await TournamentParticipant.update(
+        await TournamentRegistration.update(
           { 
-            status: 'withdrew',
+            status: 'withdrawn',
             payment_status: 'refunded',
             updated_at: new Date()
           },
@@ -620,11 +730,11 @@ const generateTournamentReport = async (req, res) => {
       return res.status(404).json({ message: 'Tournament not found' })
     }
 
-    const participants = await TournamentParticipant.count({
+    const participants = await TournamentRegistration.count({
       where: { tournament_id: id }
     })
 
-    const participantsByStatus = await TournamentParticipant.findAll({
+    const participantsByStatus = await TournamentRegistration.findAll({
       where: { tournament_id: id },
       attributes: [
         'status',
@@ -633,7 +743,7 @@ const generateTournamentReport = async (req, res) => {
       group: ['status']
     })
 
-    const paymentsByStatus = await TournamentParticipant.findAll({
+    const paymentsByStatus = await TournamentRegistration.findAll({
       where: { tournament_id: id },
       attributes: [
         'payment_status',
@@ -708,37 +818,62 @@ const getTournamentsData = async (filters = {}) => {
   const tournaments = await Tournament.findAll({
     include: [
       {
-        model: Club,
-        as: 'Club',
-        attributes: ['business_name'],
-        required: false
-      },
-      {
-        model: Partner,
-        as: 'Partner',
-        attributes: ['business_name'],
-        required: false
-      },
-      {
-        model: StateCommittee,
-        as: 'StateCommittee',
-        attributes: ['name'],
+        model: User,
+        as: 'organizer',
+        attributes: ['username', 'role'],
+        include: [
+          {
+            model: Club,
+            as: 'club',
+            attributes: ['name'],
+            required: false
+          },
+          {
+            model: Partner,
+            as: 'partner',
+            attributes: ['business_name'],
+            required: false
+          },
+          {
+            model: State,
+            as: 'state', 
+            attributes: ['name'],
+            required: false
+          }
+        ],
         required: false
       }
     ],
     limit: 1000
   })
 
-  return tournaments.map(tournament => ({
-    name: tournament.name,
-    organizer_name: tournament.Club?.business_name || tournament.Partner?.business_name || tournament.StateCommittee?.name || 'Unknown',
-    location: tournament.location,
-    start_date: tournament.start_date,
-    status: tournament.status,
-    total_participants: tournament.total_participants || 0,
-    total_revenue: (tournament.total_participants || 0) * (tournament.entry_fee || 0),
-    prize_pool: tournament.prize_pool || 0
-  }))
+  return tournaments.map(tournament => {
+    const organizer = tournament.organizer
+    let organizerName = 'Unknown'
+    
+    if (organizer) {
+      if (organizer.role === 'club' && organizer.club) {
+        organizerName = organizer.club.name
+      } else if (organizer.role === 'partner' && organizer.partner) {
+        organizerName = organizer.partner.business_name
+      } else if (organizer.role === 'state' && organizer.state) {
+        organizerName = organizer.state.name
+      } else {
+        organizerName = organizer.username
+      }
+    }
+
+    return {
+      name: tournament.name,
+      organizer_name: organizerName,
+      location: tournament.location,
+      start_date: tournament.start_date,
+      status: tournament.status,
+      total_participants: 0,
+      total_revenue: 0,
+      prize_pool: tournament.prize_pool || 0
+    }
+  })
 }
 
 module.exports = {

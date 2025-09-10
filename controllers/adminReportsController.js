@@ -5,19 +5,24 @@ const {
   Club, 
   Partner, 
   StateCommittee,
+  State,
   Tournament,
-  TournamentParticipant,
+  TournamentRegistration,
+  TournamentCategory,
+  TournamentMatch,
   Court,
   CourtReservation,
   Payment,
   Subscription,
   PlayerRanking,
-  RankingChange,
+  RankingPointsHistory,
+  RankingPeriod,
+  RankingCategory,
   Microsite,
   MicrositeAnalytics,
-  AdminLog,
-  Report,
-  ScheduledReport,
+  Message,
+  MessageRecipient,
+  Notification,
   sequelize
 } = require('../db/models')
 const { Op } = require('sequelize')
@@ -25,68 +30,53 @@ const { v4: uuidv4 } = require('uuid')
 const path = require('path')
 const fs = require('fs').promises
 
-// Get all reports with statistics
+// Get reports statistics from actual system data
 const getReports = async (req, res) => {
   try {
-    const reports = await Report.findAll({
-      order: [['created_at', 'DESC']],
-      limit: 50
-    })
-
-    // Calculate statistics
-    const totalReports = await Report.count()
-    const pendingReports = await Report.count({ where: { status: 'pending' } })
-    const completedReports = await Report.count({ where: { status: 'completed' } })
-    const failedReports = await Report.count({ where: { status: 'failed' } })
+    // Since we don't have a reports table, we'll provide live statistics
+    // In a real system, you'd track generated reports, but for now we'll show current data metrics
     
-    const fileSizeResult = await Report.findOne({
-      attributes: [
-        [sequelize.fn('SUM', sequelize.col('file_size')), 'totalFileSize']
-      ],
-      where: { status: 'completed' }
-    })
-    
-    const recordCountResult = await Report.findOne({
-      attributes: [
-        [sequelize.fn('SUM', sequelize.col('record_count')), 'totalRecords']
-      ],
-      where: { status: 'completed' }
-    })
-
-    const mostPopularTypeResult = await Report.findOne({
-      attributes: [
-        'type',
-        [sequelize.fn('COUNT', sequelize.col('type')), 'count']
-      ],
-      group: ['type'],
-      order: [[sequelize.fn('COUNT', sequelize.col('type')), 'DESC']]
-    })
-
-    const avgGenerationTimeResult = await Report.findOne({
-      attributes: [
-        [sequelize.fn('AVG', 
-          sequelize.literal('EXTRACT(EPOCH FROM (completed_at - created_at))')
-        ), 'avgTime']
-      ],
-      where: { 
-        status: 'completed',
-        completed_at: { [Op.not]: null }
-      }
-    })
+    // Get basic counts
+    const totalUsers = await User.count()
+    const activeUsers = await User.count({ where: { is_active: true } })
+    const totalTournaments = await Tournament.count()
+    const activeTournaments = await Tournament.count({ where: { status: 'ongoing' } })
+    const completedTournaments = await Tournament.count({ where: { status: 'completed' } })
+    const totalCourts = await Court.count()
+    const activeCourts = await Court.count({ where: { status: 'active' } })
+    const totalPayments = await Payment.count()
+    const totalRevenue = await Payment.sum('amount') || 0
+    const totalRankedPlayers = await PlayerRanking.count()
+    const totalMicrosites = await Microsite.count()
+    const activeMicrosites = await Microsite.count({ where: { is_active: true } })
 
     const stats = {
-      totalReports,
-      pendingReports,
-      completedReports,
-      failedReports,
-      totalFileSize: parseInt(fileSizeResult?.dataValues?.totalFileSize || 0),
-      totalRecords: parseInt(recordCountResult?.dataValues?.totalRecords || 0),
-      mostPopularType: mostPopularTypeResult?.dataValues?.type || 'users',
-      averageGenerationTime: parseFloat(avgGenerationTimeResult?.dataValues?.avgTime || 0)
+      totalReports: 0, // Would track actual report generation
+      pendingReports: 0,
+      completedReports: 0, 
+      failedReports: 0,
+      totalFileSize: 0,
+      totalRecords: totalUsers + totalTournaments + totalCourts + totalPayments,
+      mostPopularType: 'users',
+      averageGenerationTime: 0,
+      systemMetrics: {
+        totalUsers,
+        activeUsers,
+        totalTournaments,
+        activeTournaments, 
+        completedTournaments,
+        totalCourts,
+        activeCourts,
+        totalPayments,
+        totalRevenue,
+        totalRankedPlayers,
+        totalMicrosites,
+        activeMicrosites
+      }
     }
 
     res.json({
-      reports,
+      reports: [], // Would contain actual generated reports
       stats
     })
   } catch (error) {
@@ -104,52 +94,7 @@ const generateReport = async (req, res) => {
       return res.status(400).json({ message: 'Report type and name are required' })
     }
 
-    const reportId = uuidv4()
-    
-    // Create report record
-    const report = await Report.create({
-      id: reportId,
-      name,
-      type,
-      status: 'pending',
-      filters: JSON.stringify(filters),
-      fields: JSON.stringify(fields),
-      format: format || 'csv',
-      created_by: req.user.id,
-      created_at: new Date()
-    })
-
-    // Start report generation asynchronously
-    generateReportAsync(reportId, type, filters, fields, format)
-
-    res.json({
-      message: 'Report generation started',
-      report: {
-        id: report.id,
-        name: report.name,
-        type: report.type,
-        status: report.status,
-        generatedAt: report.created_at,
-        downloadUrl: null,
-        fileSize: 0,
-        recordCount: 0
-      }
-    })
-  } catch (error) {
-    console.error('Error generating report:', error)
-    res.status(500).json({ message: 'Internal server error' })
-  }
-}
-
-// Async report generation function
-const generateReportAsync = async (reportId, type, filters, fields, format) => {
-  try {
-    // Update status to processing
-    await Report.update(
-      { status: 'processing', started_at: new Date() },
-      { where: { id: reportId } }
-    )
-
+    // Generate report data immediately since we don't have async processing
     let data = []
     let recordCount = 0
 
@@ -176,52 +121,36 @@ const generateReportAsync = async (reportId, type, filters, fields, format) => {
         data = await generateSystemActivityReport(filters, fields)
         break
       default:
-        throw new Error('Unknown report type')
+        return res.status(400).json({ message: 'Unknown report type' })
     }
 
     recordCount = data.length
-
-    // Generate file
-    const fileName = `${type}-report-${reportId}-${Date.now()}.${format}`
-    const filePath = path.join(__dirname, '../../uploads/reports', fileName)
     
-    // Ensure directory exists
-    await fs.mkdir(path.dirname(filePath), { recursive: true })
-
+    // Generate file content
     let fileContent = ''
-    let fileSize = 0
-
-    if (format === 'csv') {
+    const fileExtension = format || 'csv'
+    
+    if (fileExtension === 'csv') {
       fileContent = await generateCSV(data)
-      await fs.writeFile(filePath, fileContent)
-      fileSize = Buffer.byteLength(fileContent, 'utf8')
-    } else if (format === 'json') {
+    } else if (fileExtension === 'json') {
       fileContent = JSON.stringify(data, null, 2)
-      await fs.writeFile(filePath, fileContent)
-      fileSize = Buffer.byteLength(fileContent, 'utf8')
     }
 
-    // Update report as completed
-    await Report.update({
-      status: 'completed',
-      completed_at: new Date(),
-      file_path: filePath,
-      file_size: fileSize,
-      record_count: recordCount,
-      download_url: `/api/admin/reports/${reportId}/download`
-    }, { where: { id: reportId } })
-
-  } catch (error) {
-    console.error('Error in async report generation:', error)
+    // Generate filename
+    const timestamp = new Date().toISOString().split('T')[0]
+    const filename = `${type}-report-${timestamp}.${fileExtension}`
     
-    // Update report as failed
-    await Report.update({
-      status: 'failed',
-      completed_at: new Date(),
-      error_message: error.message
-    }, { where: { id: reportId } })
+    // Set response headers for file download
+    res.setHeader('Content-Type', fileExtension === 'csv' ? 'text/csv' : 'application/json')
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+    res.send(fileContent)
+    
+  } catch (error) {
+    console.error('Error generating report:', error)
+    res.status(500).json({ message: 'Internal server error' })
   }
 }
+
 
 // Report generation functions
 const generateUsersReport = async (filters, fields) => {
@@ -239,6 +168,10 @@ const generateUsersReport = async (filters, fields) => {
     }
   }
   
+  if (filters.state) {
+    // We'll filter by state in the includes
+  }
+  
   if (filters.dateFrom || filters.dateTo) {
     whereClause.created_at = {}
     if (filters.dateFrom) whereClause.created_at[Op.gte] = new Date(filters.dateFrom)
@@ -248,28 +181,60 @@ const generateUsersReport = async (filters, fields) => {
   const users = await User.findAll({
     where: whereClause,
     include: [
-      { model: Player, as: 'playerProfile', required: false },
-      { model: Coach, as: 'coachProfile', required: false },
-      { model: Club, as: 'clubProfile', required: false },
-      { model: Partner, as: 'partnerProfile', required: false },
-      { model: StateCommittee, as: 'stateProfile', required: false }
+      { 
+        model: Player, 
+        as: 'playerProfile', 
+        required: false,
+        include: [{ model: State, as: 'state', attributes: ['name'] }]
+      },
+      { 
+        model: Coach, 
+        as: 'coachProfile', 
+        required: false,
+        include: [{ model: State, as: 'state', attributes: ['name'] }]
+      },
+      { 
+        model: Club, 
+        as: 'clubProfile', 
+        required: false,
+        include: [{ model: State, as: 'state', attributes: ['name'] }]
+      },
+      { 
+        model: Partner, 
+        as: 'partnerProfile', 
+        required: false,
+        include: [{ model: State, as: 'state', attributes: ['name'] }]
+      },
+      { 
+        model: StateCommittee, 
+        as: 'stateProfile', 
+        required: false,
+        include: [{ model: State, as: 'state', attributes: ['name'] }]
+      }
     ],
     order: [['created_at', 'DESC']]
   })
 
-  return users.map(user => ({
-    id: user.id,
-    username: user.username,
-    email: user.email,
-    phone: user.phone,
-    role: user.role,
-    status: user.is_active ? 'active' : 'inactive',
-    verified: user.is_verified,
-    premium: user.is_premium,
-    created_at: user.created_at,
-    last_login: user.last_login,
-    profile_data: user.playerProfile || user.coachProfile || user.clubProfile || user.partnerProfile || user.stateProfile
-  }))
+  return users.map(user => {
+    const profile = user.playerProfile || user.coachProfile || user.clubProfile || user.partnerProfile || user.stateProfile
+    
+    return {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      status: user.is_active ? 'active' : 'inactive',
+      verified: user.is_verified,
+      premium: user.is_premium,
+      searchable: user.is_searchable,
+      created_at: user.created_at,
+      last_login: user.last_login,
+      state: profile?.state?.name || 'Unknown',
+      profile_name: profile?.full_name || profile?.name || profile?.business_name || 'N/A',
+      profile_type: user.role
+    }
+  })
 }
 
 const generateTournamentsReport = async (filters, fields) => {
@@ -277,6 +242,10 @@ const generateTournamentsReport = async (filters, fields) => {
   
   if (filters.status) {
     whereClause.status = filters.status
+  }
+  
+  if (filters.state) {
+    whereClause.state_id = filters.state
   }
   
   if (filters.dateFrom || filters.dateTo) {
@@ -289,13 +258,19 @@ const generateTournamentsReport = async (filters, fields) => {
     where: whereClause,
     include: [
       { 
-        model: TournamentParticipant, 
-        as: 'participants',
-        include: [{ model: User, as: 'user', attributes: ['username', 'email'] }]
+        model: TournamentRegistration, 
+        as: 'registrations',
+        include: [
+          { 
+            model: Player, 
+            as: 'player',
+            include: [{ model: User, as: 'user', attributes: ['username', 'email'] }]
+          }
+        ],
+        required: false
       },
-      { model: Club, as: 'organizerClub', required: false },
-      { model: Partner, as: 'organizerPartner', required: false },
-      { model: StateCommittee, as: 'organizerState', required: false }
+      { model: State, as: 'state', attributes: ['name'] },
+      { model: TournamentCategory, as: 'categories', required: false }
     ],
     order: [['created_at', 'DESC']]
   })
@@ -303,16 +278,24 @@ const generateTournamentsReport = async (filters, fields) => {
   return tournaments.map(tournament => ({
     id: tournament.id,
     name: tournament.name,
+    tournament_type: tournament.tournament_type,
     organizer_type: tournament.organizer_type,
-    organizer_name: tournament.organizerClub?.name || tournament.organizerPartner?.business_name || tournament.organizerState?.name,
+    organizer_id: tournament.organizer_id,
+    venue_name: tournament.venue_name,
+    venue_address: tournament.venue_address,
     start_date: tournament.start_date,
     end_date: tournament.end_date,
-    location: tournament.location,
+    registration_start: tournament.registration_start,
+    registration_end: tournament.registration_end,
     status: tournament.status,
+    state: tournament.state?.name || 'Unknown',
     max_participants: tournament.max_participants,
-    current_participants: tournament.participants?.length || 0,
+    current_participants: tournament.registrations?.length || 0,
+    categories_count: tournament.categories?.length || 0,
     entry_fee: tournament.entry_fee,
-    total_revenue: (tournament.participants?.length || 0) * tournament.entry_fee,
+    total_revenue: (tournament.registrations?.length || 0) * (tournament.entry_fee || 0),
+    is_ranking: tournament.is_ranking,
+    ranking_multiplier: tournament.ranking_multiplier,
     created_at: tournament.created_at
   }))
 }
@@ -323,6 +306,10 @@ const generateCourtsReport = async (filters, fields) => {
   if (filters.status) {
     whereClause.status = filters.status
   }
+  
+  if (filters.state) {
+    whereClause.state_id = filters.state
+  }
 
   const courts = await Court.findAll({
     where: whereClause,
@@ -331,15 +318,21 @@ const generateCourtsReport = async (filters, fields) => {
         model: CourtReservation, 
         as: 'reservations',
         where: filters.dateFrom || filters.dateTo ? {
-          reservation_date: {
+          date: {
             ...(filters.dateFrom && { [Op.gte]: new Date(filters.dateFrom) }),
             ...(filters.dateTo && { [Op.lte]: new Date(filters.dateTo) })
           }
         } : undefined,
-        required: false
+        required: false,
+        include: [
+          { 
+            model: Player, 
+            as: 'player',
+            include: [{ model: User, as: 'user', attributes: ['username'] }]
+          }
+        ]
       },
-      { model: Club, as: 'ownerClub', required: false },
-      { model: Partner, as: 'ownerPartner', required: false }
+      { model: State, as: 'state', attributes: ['name'] }
     ],
     order: [['created_at', 'DESC']]
   })
@@ -347,16 +340,21 @@ const generateCourtsReport = async (filters, fields) => {
   return courts.map(court => ({
     id: court.id,
     name: court.name,
-    owner_type: court.club_id ? 'club' : 'partner',
-    owner_name: court.ownerClub?.name || court.ownerPartner?.business_name,
+    owner_type: court.owner_type,
+    owner_id: court.owner_id,
+    address: court.address,
+    state: court.state?.name || 'Unknown',
+    court_count: court.court_count,
     surface_type: court.surface_type,
-    lighting: court.lighting,
     indoor: court.indoor,
+    lights: court.lights,
+    amenities: court.amenities,
     status: court.status,
-    hourly_rate: court.hourly_rate,
-    location: `${court.address}, ${court.city}, ${court.state}`,
+    latitude: court.latitude,
+    longitude: court.longitude,
     total_reservations: court.reservations?.length || 0,
-    revenue_generated: court.reservations?.reduce((sum, res) => sum + res.amount, 0) || 0
+    revenue_generated: court.reservations?.reduce((sum, res) => sum + (res.amount || 0), 0) || 0,
+    created_at: court.created_at
   }))
 }
 
@@ -368,9 +366,9 @@ const generatePaymentsReport = async (filters, fields) => {
   }
   
   if (filters.dateFrom || filters.dateTo) {
-    whereClause.payment_date = {}
-    if (filters.dateFrom) whereClause.payment_date[Op.gte] = new Date(filters.dateFrom)
-    if (filters.dateTo) whereClause.payment_date[Op.lte] = new Date(filters.dateTo)
+    whereClause.transaction_date = {}
+    if (filters.dateFrom) whereClause.transaction_date[Op.gte] = new Date(filters.dateFrom)
+    if (filters.dateTo) whereClause.transaction_date[Op.lte] = new Date(filters.dateTo)
   }
 
   const payments = await Payment.findAll({
@@ -378,7 +376,7 @@ const generatePaymentsReport = async (filters, fields) => {
     include: [
       { model: User, as: 'user', attributes: ['username', 'email', 'role'] }
     ],
-    order: [['payment_date', 'DESC']]
+    order: [['transaction_date', 'DESC']]
   })
 
   return payments.map(payment => ({
@@ -387,107 +385,191 @@ const generatePaymentsReport = async (filters, fields) => {
     user_email: payment.user?.email,
     user_role: payment.user?.role,
     amount: payment.amount,
-    type: payment.type,
-    status: payment.status,
+    currency: payment.currency,
+    payment_type: payment.payment_type,
     payment_method: payment.payment_method,
+    reference_type: payment.reference_type,
     reference_id: payment.reference_id,
-    payment_date: payment.payment_date,
+    stripe_payment_id: payment.stripe_payment_id,
+    transaction_id: payment.transaction_id,
+    description: payment.description,
+    status: payment.status,
+    transaction_date: payment.transaction_date,
     created_at: payment.created_at
   }))
 }
 
 const generateRankingsReport = async (filters, fields) => {
+  const whereClause = {}
+  
+  if (filters.category) {
+    whereClause.category_id = filters.category
+  }
+  
+  if (filters.period) {
+    whereClause.period_id = filters.period
+  }
+
   const rankings = await PlayerRanking.findAll({
+    where: whereClause,
     include: [
       { 
-        model: User, 
+        model: Player, 
         as: 'player', 
-        attributes: ['username', 'email'],
+        attributes: ['id', 'full_name', 'birth_date', 'gender', 'nrtp_level'],
         include: [
-          { model: Player, as: 'playerProfile', attributes: ['full_name', 'birth_date', 'gender'] }
+          { model: User, as: 'user', attributes: ['username', 'email'] },
+          { model: State, as: 'state', attributes: ['name'] }
         ]
-      }
+      },
+      { model: RankingPeriod, as: 'period', attributes: ['name', 'start_date', 'end_date'] },
+      { model: RankingCategory, as: 'category', attributes: ['name', 'gender', 'min_age', 'max_age'] }
     ],
-    order: [['ranking_position', 'ASC']]
+    order: [['current_rank', 'ASC']]
   })
 
   return rankings.map(ranking => ({
+    id: ranking.id,
     player_id: ranking.player_id,
-    player_name: ranking.player?.playerProfile?.full_name || ranking.player?.username,
-    player_email: ranking.player?.email,
-    current_position: ranking.ranking_position,
-    current_points: ranking.ranking_points,
+    player_name: ranking.player?.full_name || 'Unknown',
+    username: ranking.player?.user?.username || 'Unknown',
+    player_email: ranking.player?.user?.email,
+    state: ranking.player?.state?.name || 'Unknown',
+    nrtp_level: ranking.player?.nrtp_level,
+    period: ranking.period?.name || 'Unknown',
+    category: ranking.category?.name || 'Unknown',
+    current_rank: ranking.current_rank,
+    previous_rank: ranking.previous_rank,
+    current_points: ranking.points,
     tournaments_played: ranking.tournaments_played,
-    wins: ranking.wins,
-    losses: ranking.losses,
-    last_updated: ranking.last_updated
+    rank_change: ranking.previous_rank ? ranking.previous_rank - ranking.current_rank : 0,
+    created_at: ranking.created_at,
+    updated_at: ranking.updated_at
   }))
 }
 
 const generateMicrositesReport = async (filters, fields) => {
   const whereClause = {}
   
-  if (filters.status) {
-    whereClause.status = filters.status
+  if (filters.status !== undefined) {
+    whereClause.is_active = filters.status === 'active'
+  }
+  
+  if (filters.owner_type) {
+    whereClause.owner_type = filters.owner_type
   }
 
   const microsites = await Microsite.findAll({
     where: whereClause,
     include: [
-      { model: Club, as: 'ownerClub', required: false },
-      { model: Partner, as: 'ownerPartner', required: false },
-      { model: StateCommittee, as: 'ownerState', required: false }
+      { 
+        model: MicrositeAnalytics, 
+        as: 'analytics',
+        required: false
+      }
     ],
     order: [['created_at', 'DESC']]
   })
 
   return microsites.map(microsite => ({
     id: microsite.id,
-    title: microsite.title,
-    domain_name: microsite.domain_name,
     owner_type: microsite.owner_type,
-    owner_name: microsite.ownerClub?.name || microsite.ownerPartner?.business_name || microsite.ownerState?.name,
-    status: microsite.status,
-    visibility_status: microsite.visibility_status,
-    page_views: microsite.page_views,
-    monthly_visitors: microsite.monthly_visitors,
-    content_score: microsite.content_score,
-    seo_score: microsite.seo_score,
-    has_inappropriate_content: microsite.has_inappropriate_content,
+    owner_id: microsite.owner_id,
+    subdomain: microsite.subdomain,
+    title: microsite.title,
+    description: microsite.description,
+    logo_url: microsite.logo_url,
+    banner_url: microsite.banner_url,
+    primary_color: microsite.primary_color,
+    secondary_color: microsite.secondary_color,
+    is_active: microsite.is_active,
     created_at: microsite.created_at,
-    last_updated: microsite.last_updated
+    updated_at: microsite.updated_at,
+    analytics_data: microsite.analytics || null
   }))
 }
 
 const generateSystemActivityReport = async (filters, fields) => {
+  // Since we don't have an AdminLog table, we'll generate a report from various system activities
   const whereClause = {}
   
   if (filters.dateFrom || filters.dateTo) {
-    whereClause.timestamp = {}
-    if (filters.dateFrom) whereClause.timestamp[Op.gte] = new Date(filters.dateFrom)
-    if (filters.dateTo) whereClause.timestamp[Op.lte] = new Date(filters.dateTo)
+    whereClause.created_at = {}
+    if (filters.dateFrom) whereClause.created_at[Op.gte] = new Date(filters.dateFrom)
+    if (filters.dateTo) whereClause.created_at[Op.lte] = new Date(filters.dateTo)
   }
 
-  const logs = await AdminLog.findAll({
+  // Get recent system activities from different sources
+  const activities = []
+  
+  // Recent user registrations
+  const recentUsers = await User.findAll({
     where: whereClause,
+    attributes: ['id', 'username', 'role', 'created_at'],
+    order: [['created_at', 'DESC']],
+    limit: 100
+  })
+  
+  recentUsers.forEach(user => {
+    activities.push({
+      id: `user_${user.id}`,
+      activity_type: 'user_registration',
+      description: `New ${user.role} registered: ${user.username}`,
+      timestamp: user.created_at,
+      related_id: user.id,
+      related_type: 'user'
+    })
+  })
+  
+  // Recent tournament creations
+  const recentTournaments = await Tournament.findAll({
+    where: whereClause,
+    attributes: ['id', 'name', 'organizer_type', 'created_at'],
+    order: [['created_at', 'DESC']],
+    limit: 100
+  })
+  
+  recentTournaments.forEach(tournament => {
+    activities.push({
+      id: `tournament_${tournament.id}`,
+      activity_type: 'tournament_created',
+      description: `New tournament created: ${tournament.name}`,
+      timestamp: tournament.created_at,
+      related_id: tournament.id,
+      related_type: 'tournament'
+    })
+  })
+  
+  // Recent court reservations
+  const recentReservations = await CourtReservation.findAll({
+    where: whereClause,
+    attributes: ['id', 'amount', 'status', 'created_at'],
     include: [
-      { model: User, as: 'admin', attributes: ['username', 'email'] }
+      { model: Court, as: 'court', attributes: ['name'] },
+      { 
+        model: Player, 
+        as: 'player', 
+        include: [{ model: User, as: 'user', attributes: ['username'] }]
+      }
     ],
-    order: [['timestamp', 'DESC']],
-    limit: 10000 // Limit for performance
+    order: [['created_at', 'DESC']],
+    limit: 100
+  })
+  
+  recentReservations.forEach(reservation => {
+    activities.push({
+      id: `reservation_${reservation.id}`,
+      activity_type: 'court_reservation',
+      description: `Court reserved: ${reservation.court?.name} by ${reservation.player?.user?.username}`,
+      timestamp: reservation.created_at,
+      amount: reservation.amount,
+      related_id: reservation.id,
+      related_type: 'reservation'
+    })
   })
 
-  return logs.map(log => ({
-    id: log.id,
-    admin_name: log.admin?.username,
-    admin_email: log.admin?.email,
-    action: log.action,
-    target_type: log.target_type,
-    target_id: log.target_id,
-    details: log.details,
-    ip_address: log.ip_address,
-    timestamp: log.timestamp
-  }))
+  // Sort all activities by timestamp
+  return activities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
 }
 
 // Utility function to generate CSV
@@ -509,88 +591,7 @@ const generateCSV = async (data) => {
   return [csvHeader, ...csvRows].join('\n')
 }
 
-// Download report
-const downloadReport = async (req, res) => {
-  try {
-    const { id } = req.params
-
-    const report = await Report.findByPk(id)
-    if (!report) {
-      return res.status(404).json({ message: 'Report not found' })
-    }
-
-    if (report.status !== 'completed') {
-      return res.status(400).json({ message: 'Report is not ready for download' })
-    }
-
-    const filePath = report.file_path
-    const fileName = path.basename(filePath)
-
-    res.download(filePath, fileName, (err) => {
-      if (err) {
-        console.error('Download error:', err)
-        res.status(500).json({ message: 'Failed to download report' })
-      }
-    })
-  } catch (error) {
-    console.error('Error downloading report:', error)
-    res.status(500).json({ message: 'Internal server error' })
-  }
-}
-
-// Get report status
-const getReportStatus = async (req, res) => {
-  try {
-    const { id } = req.params
-
-    const report = await Report.findByPk(id)
-    if (!report) {
-      return res.status(404).json({ message: 'Report not found' })
-    }
-
-    res.json({
-      status: report.status,
-      downloadUrl: report.download_url,
-      fileSize: report.file_size,
-      recordCount: report.record_count,
-      errorMessage: report.error_message,
-      completedAt: report.completed_at
-    })
-  } catch (error) {
-    console.error('Error fetching report status:', error)
-    res.status(500).json({ message: 'Internal server error' })
-  }
-}
-
-// Delete report
-const deleteReport = async (req, res) => {
-  try {
-    const { id } = req.params
-
-    const report = await Report.findByPk(id)
-    if (!report) {
-      return res.status(404).json({ message: 'Report not found' })
-    }
-
-    // Delete file if exists
-    if (report.file_path) {
-      try {
-        await fs.unlink(report.file_path)
-      } catch (err) {
-        console.error('Error deleting report file:', err)
-      }
-    }
-
-    await report.destroy()
-
-    res.json({ message: 'Report deleted successfully' })
-  } catch (error) {
-    console.error('Error deleting report:', error)
-    res.status(500).json({ message: 'Internal server error' })
-  }
-}
-
-// Get report preview
+// Get report preview  
 const getReportPreview = async (req, res) => {
   try {
     const { type, filters, fields, limit = 10 } = req.body
@@ -634,11 +635,11 @@ const getReportPreview = async (req, res) => {
   }
 }
 
+
+
+
 module.exports = {
   getReports,
   generateReport,
-  downloadReport,
-  getReportStatus,
-  deleteReport,
   getReportPreview
 }

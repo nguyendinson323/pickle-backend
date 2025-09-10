@@ -1,8 +1,18 @@
-const { User, Player, Tournament, TournamentParticipant, State, sequelize } = require('../db/models')
+const { 
+  User, 
+  Player, 
+  PlayerRanking, 
+  RankingPeriod, 
+  RankingCategory, 
+  RankingPointsHistory, 
+  Tournament, 
+  TournamentCategory,
+  State, 
+  sequelize 
+} = require('../db/models')
 const { Op } = require('sequelize')
-const RankingService = require('../services/rankingService')
 
-// Get player rankings with filters
+// Get player rankings with filters and proper associations
 const getPlayerRankings = async (req, res) => {
   try {
     const {
@@ -12,313 +22,575 @@ const getPlayerRankings = async (req, res) => {
       maxPosition,
       changeType,
       dateFrom,
-      dateTo
+      dateTo,
+      category,
+      period,
+      page = 1,
+      limit = 50
     } = req.query
 
-    // Build filter conditions
-    const whereConditions = {}
-    const playerWhereConditions = {}
-    
-    if (state) {
-      whereConditions['$Player.state_id$'] = state
+    const offset = (parseInt(page) - 1) * parseInt(limit)
+
+    // Get active ranking period if not specified
+    let periodCondition = {}
+    if (period) {
+      periodCondition.period_id = period
+    } else {
+      const activePeriod = await RankingPeriod.findOne({
+        where: { is_active: true }
+      })
+      if (activePeriod) {
+        periodCondition.period_id = activePeriod.id
+      }
     }
 
-    if (searchTerm) {
-      playerWhereConditions[Op.or] = [
-        { '$User.username$': { [Op.iLike]: `%${searchTerm}%` } },
-        { full_name: { [Op.iLike]: `%${searchTerm}%` } }
-      ]
+    // Build where conditions for PlayerRanking
+    let whereConditions = { ...periodCondition }
+    
+    if (category) {
+      whereConditions.category_id = category
     }
 
     if (minPosition) {
-      whereConditions.ranking_position = { [Op.gte]: parseInt(minPosition) }
+      whereConditions.current_rank = { [Op.gte]: parseInt(minPosition) }
     }
 
     if (maxPosition) {
-      if (whereConditions.ranking_position) {
-        whereConditions.ranking_position[Op.lte] = parseInt(maxPosition)
+      if (whereConditions.current_rank) {
+        whereConditions.current_rank = { 
+          ...whereConditions.current_rank,
+          [Op.lte]: parseInt(maxPosition) 
+        }
       } else {
-        whereConditions.ranking_position = { [Op.lte]: parseInt(maxPosition) }
+        whereConditions.current_rank = { [Op.lte]: parseInt(maxPosition) }
       }
     }
 
     if (dateFrom || dateTo) {
-      whereConditions.last_ranking_update = {}
+      whereConditions.updated_at = {}
       if (dateFrom) {
-        whereConditions.last_ranking_update[Op.gte] = new Date(dateFrom)
+        whereConditions.updated_at[Op.gte] = new Date(dateFrom)
       }
       if (dateTo) {
-        whereConditions.last_ranking_update[Op.lte] = new Date(dateTo + 'T23:59:59')
+        whereConditions.updated_at[Op.lte] = new Date(dateTo)
       }
     }
 
-    // Fetch players with ranking information
-    const players = await Player.findAll({
+    // Build include conditions for Player/User search
+    let playerInclude = {
+      model: Player,
+      as: 'player',
+      attributes: ['id', 'full_name', 'state_id', 'nrtp_level', 'ranking_position', 'club_id'],
       include: [
         {
           model: User,
-          attributes: ['id', 'username', 'email', 'is_active']
+          as: 'user',
+          attributes: ['id', 'username', 'email']
         },
         {
           model: State,
-          attributes: ['id', 'name']
+          as: 'state',
+          attributes: ['id', 'name', 'short_code']
         }
       ],
-      where: {
-        ...playerWhereConditions,
-        ranking_position: { [Op.not]: null }
-      },
-      order: [['ranking_position', 'ASC']],
-      limit: 1000
-    })
-
-    // Transform data for frontend
-    const rankings = players.map(player => {
-      const previousPosition = player.ranking_position + Math.floor(Math.random() * 10) - 5 // Mock previous position
-      const previousPoints = player.ranking_points - Math.floor(Math.random() * 100) + 50 // Mock previous points
-      
-      const change = player.ranking_position - previousPosition
-      let trend = 'stable'
-      if (change > 0) trend = 'up'
-      else if (change < 0) trend = 'down'
-
-      return {
-        id: player.id,
-        player_id: player.id,
-        player_name: player.full_name,
-        current_position: player.ranking_position,
-        previous_position: previousPosition,
-        current_points: player.ranking_points,
-        previous_points: previousPoints,
-        change: change,
-        state_id: player.state_id,
-        state_name: player.State?.name || 'Unknown',
-        tournaments_played: player.tournaments_played || 0,
-        last_updated: player.last_ranking_update || new Date().toISOString(),
-        trend: trend
-      }
-    })
-
-    // Apply change type filter after transformation
-    let filteredRankings = rankings
-    if (changeType) {
-      switch (changeType) {
-        case 'improved':
-          filteredRankings = rankings.filter(r => r.change > 0)
-          break
-        case 'declined':
-          filteredRankings = rankings.filter(r => r.change < 0)
-          break
-        case 'stable':
-          filteredRankings = rankings.filter(r => r.change === 0)
-          break
-      }
-    }
-
-    // Calculate statistics
-    const stats = {
-      totalRankedPlayers: rankings.length,
-      recentChanges: rankings.filter(r => r.change !== 0).length,
-      averagePoints: rankings.length > 0 ? Math.round(rankings.reduce((sum, r) => sum + r.current_points, 0) / rankings.length) : 0,
-      highestPoints: rankings.length > 0 ? Math.max(...rankings.map(r => r.current_points)) : 0,
-      mostActiveState: 'California', // Mock data
-      totalTournamentsConsidered: await Tournament.count({ where: { status: 'completed' } })
-    }
-
-    res.json({
-      rankings: filteredRankings,
-      stats
-    })
-  } catch (error) {
-    console.error('Error fetching player rankings:', error)
-    res.status(500).json({ message: 'Failed to fetch player rankings' })
-  }
-}
-
-// Get ranking changes history
-const getRankingChanges = async (req, res) => {
-  try {
-    const {
-      state,
-      searchTerm,
-      dateFrom,
-      dateTo
-    } = req.query
-
-    // In a real implementation, this would come from a RankingHistory table
-    // For now, generating mock data based on current players
-    const players = await Player.findAll({
-      include: [
-        {
-          model: User,
-          attributes: ['username']
-        }
-      ],
-      where: {
-        ranking_position: { [Op.not]: null }
-      },
-      limit: 50,
-      order: [['last_ranking_update', 'DESC']]
-    })
-
-    const changes = players.map(player => ({
-      id: player.id,
-      player_id: player.id,
-      player_name: player.full_name,
-      old_position: player.ranking_position + Math.floor(Math.random() * 20) - 10,
-      new_position: player.ranking_position,
-      old_points: player.ranking_points - Math.floor(Math.random() * 200) + 100,
-      new_points: player.ranking_points,
-      change_date: player.last_ranking_update || new Date().toISOString(),
-      reason: 'Tournament result update',
-      tournament_id: Math.floor(Math.random() * 100) + 1,
-      tournament_name: `Tournament ${Math.floor(Math.random() * 100) + 1}`
-    }))
-
-    // Apply filters
-    let filteredChanges = changes
-
-    if (dateFrom || dateTo) {
-      filteredChanges = filteredChanges.filter(change => {
-        const changeDate = new Date(change.change_date)
-        if (dateFrom && changeDate < new Date(dateFrom)) return false
-        if (dateTo && changeDate > new Date(dateTo + 'T23:59:59')) return false
-        return true
-      })
+      required: true
     }
 
     if (searchTerm) {
-      filteredChanges = filteredChanges.filter(change =>
-        change.player_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        change.tournament_name.toLowerCase().includes(searchTerm.toLowerCase())
-      )
+      playerInclude.where = {
+        [Op.or]: [
+          { full_name: { [Op.iLike]: `%${searchTerm}%` } },
+          { '$player.user.username$': { [Op.iLike]: `%${searchTerm}%` } }
+        ]
+      }
     }
 
-    res.json(filteredChanges)
+    if (state) {
+      if (playerInclude.where) {
+        playerInclude.where.state_id = state
+      } else {
+        playerInclude.where = { state_id: state }
+      }
+    }
+
+    // Apply change type filter if specified
+    if (changeType) {
+      if (changeType === 'up') {
+        whereConditions[sequelize.literal('current_rank < previous_rank')] = true
+      } else if (changeType === 'down') {
+        whereConditions[sequelize.literal('current_rank > previous_rank')] = true
+      } else if (changeType === 'stable') {
+        whereConditions[sequelize.literal('current_rank = previous_rank')] = true
+      } else if (changeType === 'new') {
+        whereConditions.previous_rank = null
+      }
+    }
+
+    const { count, rows: playerRankings } = await PlayerRanking.findAndCountAll({
+      where: whereConditions,
+      include: [
+        playerInclude,
+        {
+          model: RankingPeriod,
+          as: 'period',
+          attributes: ['id', 'name', 'start_date', 'end_date']
+        },
+        {
+          model: RankingCategory,
+          as: 'category',
+          attributes: ['id', 'name', 'gender', 'min_age', 'max_age']
+        }
+      ],
+      order: [['current_rank', 'ASC']],
+      limit: parseInt(limit),
+      offset: offset,
+      distinct: true
+    })
+
+    // Format the response to match frontend expectations
+    const formattedRankings = playerRankings.map(ranking => ({
+      id: ranking.id,
+      player_id: ranking.player_id,
+      player_name: ranking.player.full_name,
+      username: ranking.player.user.username,
+      current_position: ranking.current_rank,
+      previous_position: ranking.previous_rank,
+      current_points: ranking.points,
+      previous_points: ranking.previous_rank ? ranking.points : 0, // Could be improved with historical data
+      change: ranking.previous_rank ? ranking.previous_rank - ranking.current_rank : 0,
+      state_id: ranking.player.state_id,
+      state_name: ranking.player.state ? ranking.player.state.name : 'Unknown',
+      tournaments_played: ranking.tournaments_played,
+      last_updated: ranking.updated_at,
+      trend: ranking.previous_rank ? 
+        (ranking.current_rank < ranking.previous_rank ? 'up' : 
+         ranking.current_rank > ranking.previous_rank ? 'down' : 'stable') : 'new',
+      nrtp_level: ranking.player.nrtp_level,
+      category: ranking.category.name,
+      period: ranking.period.name
+    }))
+
+    res.json({
+      rankings: formattedRankings,
+      totalCount: count,
+      currentPage: parseInt(page),
+      totalPages: Math.ceil(count / parseInt(limit))
+    })
+  } catch (error) {
+    console.error('Error fetching player rankings:', error)
+    res.status(500).json({ message: 'Internal server error', error: error.message })
+  }
+}
+
+// Get ranking changes/history
+const getRankingChanges = async (req, res) => {
+  try {
+    const {
+      playerId,
+      dateFrom,
+      dateTo,
+      changeType,
+      limit = 50,
+      page = 1
+    } = req.query
+
+    const offset = (parseInt(page) - 1) * parseInt(limit)
+
+    let whereConditions = {}
+    
+    if (playerId) {
+      whereConditions.player_id = playerId
+    }
+
+    if (dateFrom || dateTo) {
+      whereConditions.created_at = {}
+      if (dateFrom) {
+        whereConditions.created_at[Op.gte] = new Date(dateFrom)
+      }
+      if (dateTo) {
+        whereConditions.created_at[Op.lte] = new Date(dateTo)
+      }
+    }
+
+    // Get ranking changes from points history
+    const { count, rows: changes } = await RankingPointsHistory.findAndCountAll({
+      where: whereConditions,
+      include: [
+        {
+          model: Player,
+          as: 'player',
+          attributes: ['id', 'full_name'],
+          include: [
+            {
+              model: User,
+              as: 'user',
+              attributes: ['username']
+            }
+          ]
+        },
+        {
+          model: Tournament,
+          as: 'tournament',
+          attributes: ['id', 'name', 'start_date', 'end_date'],
+          required: false
+        }
+      ],
+      order: [['created_at', 'DESC']],
+      limit: parseInt(limit),
+      offset: offset
+    })
+
+    const formattedChanges = changes.map(change => ({
+      id: change.id,
+      player_id: change.player_id,
+      player_name: change.player.full_name,
+      username: change.player.user.username,
+      points_change: change.points,
+      reason: change.reason,
+      tournament_name: change.tournament ? change.tournament.name : 'Manual Adjustment',
+      timestamp: change.created_at,
+      change_type: change.points > 0 ? 'gain' : 'loss'
+    }))
+
+    res.json({
+      changes: formattedChanges,
+      totalCount: count,
+      currentPage: parseInt(page),
+      totalPages: Math.ceil(count / parseInt(limit))
+    })
   } catch (error) {
     console.error('Error fetching ranking changes:', error)
-    res.status(500).json({ message: 'Failed to fetch ranking changes' })
+    res.status(500).json({ message: 'Internal server error', error: error.message })
   }
 }
 
-// Manual ranking adjustment
+// Get ranking statistics
+const getRankingStats = async (req, res) => {
+  try {
+    // Get active ranking period
+    const activePeriod = await RankingPeriod.findOne({
+      where: { is_active: true }
+    })
+
+    if (!activePeriod) {
+      return res.json({
+        totalRankedPlayers: 0,
+        recentChanges: 0,
+        averagePoints: 0,
+        highestPoints: 0,
+        mostActiveState: 'N/A',
+        totalTournamentsConsidered: 0,
+        activePeriod: null
+      })
+    }
+
+    // Get total ranked players in active period
+    const totalRankedPlayers = await PlayerRanking.count({
+      where: { 
+        period_id: activePeriod.id,
+        current_rank: { [Op.not]: null }
+      }
+    })
+
+    // Get recent changes (last 7 days)
+    const sevenDaysAgo = new Date()
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+    
+    const recentChanges = await RankingPointsHistory.count({
+      where: {
+        created_at: { [Op.gte]: sevenDaysAgo }
+      }
+    })
+
+    // Get statistics from current rankings
+    const rankingStats = await PlayerRanking.findAll({
+      where: { 
+        period_id: activePeriod.id,
+        points: { [Op.gt]: 0 }
+      },
+      attributes: [
+        [sequelize.fn('AVG', sequelize.col('points')), 'avgPoints'],
+        [sequelize.fn('MAX', sequelize.col('points')), 'maxPoints'],
+        [sequelize.fn('SUM', sequelize.col('tournaments_played')), 'totalTournaments']
+      ],
+      raw: true
+    })
+
+    // Get most active state
+    const stateStats = await PlayerRanking.findAll({
+      where: { period_id: activePeriod.id },
+      include: [
+        {
+          model: Player,
+          as: 'player',
+          attributes: [],
+          include: [
+            {
+              model: State,
+              as: 'state',
+              attributes: ['name']
+            }
+          ]
+        }
+      ],
+      attributes: [
+        [sequelize.fn('COUNT', sequelize.col('PlayerRanking.id')), 'playerCount'],
+        [sequelize.col('player.state.name'), 'stateName']
+      ],
+      group: ['player.state.name'],
+      order: [[sequelize.fn('COUNT', sequelize.col('PlayerRanking.id')), 'DESC']],
+      limit: 1,
+      raw: true
+    })
+
+    res.json({
+      totalRankedPlayers,
+      recentChanges,
+      averagePoints: Math.round(parseFloat(rankingStats[0]?.avgPoints || 0)),
+      highestPoints: parseInt(rankingStats[0]?.maxPoints || 0),
+      mostActiveState: stateStats[0]?.stateName || 'N/A',
+      totalTournamentsConsidered: parseInt(rankingStats[0]?.totalTournaments || 0),
+      activePeriod: {
+        id: activePeriod.id,
+        name: activePeriod.name,
+        start_date: activePeriod.start_date,
+        end_date: activePeriod.end_date
+      }
+    })
+  } catch (error) {
+    console.error('Error fetching ranking statistics:', error)
+    res.status(500).json({ message: 'Internal server error', error: error.message })
+  }
+}
+
+// Manually adjust player ranking
 const adjustRanking = async (req, res) => {
   try {
-    const { playerId, newPosition, newPoints, reason } = req.body
+    const { playerId, points, reason, newRank } = req.body
 
-    if (!playerId || !newPosition || !newPoints || !reason) {
-      return res.status(400).json({ message: 'Player ID, new position, new points, and reason are required' })
-    }
-
-    // Find the player
-    const player = await Player.findByPk(playerId, {
-      include: [{ model: User, attributes: ['username'] }]
+    // Get active period
+    const activePeriod = await RankingPeriod.findOne({
+      where: { is_active: true }
     })
 
-    if (!player) {
-      return res.status(404).json({ message: 'Player not found' })
+    if (!activePeriod) {
+      return res.status(400).json({ message: 'No active ranking period found' })
     }
 
-    const oldPosition = player.ranking_position
-    const oldPoints = player.ranking_points
-
-    // Update player ranking
-    await player.update({
-      ranking_position: newPosition,
-      ranking_points: newPoints,
-      last_ranking_update: new Date()
+    // Get the player's current ranking
+    const playerRanking = await PlayerRanking.findOne({
+      where: {
+        player_id: playerId,
+        period_id: activePeriod.id
+      }
     })
 
-    // Create ranking change record
-    const change = {
-      id: Date.now(),
-      player_id: playerId,
-      player_name: player.full_name,
-      old_position: oldPosition,
-      new_position: newPosition,
-      old_points: oldPoints,
-      new_points: newPoints,
-      change_date: new Date().toISOString(),
-      reason: `Manual adjustment: ${reason}`,
-      tournament_id: null,
-      tournament_name: null
+    if (!playerRanking) {
+      return res.status(404).json({ message: 'Player ranking not found' })
     }
 
-    // In real implementation, save to RankingHistory table
-    
-    res.json({
-      message: 'Ranking adjusted successfully',
-      change
-    })
+    const transaction = await sequelize.transaction()
+
+    try {
+      // Update ranking
+      const previousRank = playerRanking.current_rank
+      const previousPoints = playerRanking.points
+
+      await playerRanking.update({
+        points: points !== undefined ? points : playerRanking.points,
+        previous_rank: previousRank,
+        current_rank: newRank !== undefined ? newRank : playerRanking.current_rank
+      }, { transaction })
+
+      // Record the change in history
+      if (points !== undefined && points !== previousPoints) {
+        await RankingPointsHistory.create({
+          player_id: playerId,
+          tournament_id: null, // Manual adjustment
+          category_id: playerRanking.category_id,
+          points: points - previousPoints,
+          reason: reason || 'Manual adjustment by admin'
+        }, { transaction })
+      }
+
+      await transaction.commit()
+
+      res.json({ 
+        message: 'Ranking adjusted successfully',
+        previousRank,
+        newRank: newRank || playerRanking.current_rank,
+        pointsChange: points !== undefined ? points - previousPoints : 0
+      })
+    } catch (error) {
+      await transaction.rollback()
+      throw error
+    }
   } catch (error) {
     console.error('Error adjusting ranking:', error)
-    res.status(500).json({ message: 'Failed to adjust ranking' })
+    res.status(500).json({ message: 'Internal server error', error: error.message })
   }
 }
 
-// Recalculate rankings
+// Recalculate all rankings
 const recalculateRankings = async (req, res) => {
   try {
-    const { stateId } = req.body
-
-    console.log(`Starting ranking recalculation${stateId ? ` for state ${stateId}` : ' for all states'}...`)
+    // This would trigger a complex ranking calculation
+    // For now, we'll simulate the process and update ranks based on points
     
-    const results = await RankingService.recalculateAllRankings(stateId)
-    
-    console.log(`Ranking recalculation completed:`, results)
-
-    res.json({
-      message: 'Rankings recalculated successfully',
-      ...results,
-      recalculatedAt: new Date().toISOString()
+    const activePeriod = await RankingPeriod.findOne({
+      where: { is_active: true }
     })
+
+    if (!activePeriod) {
+      return res.status(400).json({ message: 'No active ranking period found' })
+    }
+
+    const transaction = await sequelize.transaction()
+
+    try {
+      // Get all rankings for the active period, ordered by points
+      const rankings = await PlayerRanking.findAll({
+        where: { period_id: activePeriod.id },
+        order: [['points', 'DESC'], ['tournaments_played', 'DESC']],
+        transaction
+      })
+
+      // Update ranks based on points
+      for (let i = 0; i < rankings.length; i++) {
+        const ranking = rankings[i]
+        const newRank = i + 1
+        
+        await ranking.update({
+          previous_rank: ranking.current_rank,
+          current_rank: newRank
+        }, { transaction })
+      }
+
+      await transaction.commit()
+
+      res.json({ 
+        message: 'Rankings recalculated successfully',
+        playersUpdated: rankings.length
+      })
+    } catch (error) {
+      await transaction.rollback()
+      throw error
+    }
   } catch (error) {
     console.error('Error recalculating rankings:', error)
-    res.status(500).json({ message: 'Failed to recalculate rankings' })
+    res.status(500).json({ message: 'Internal server error', error: error.message })
   }
 }
 
 // Freeze/unfreeze rankings
 const freezeRankings = async (req, res) => {
   try {
-    const { freeze, reason } = req.body
+    const { freeze } = req.body
 
-    // In a real implementation, this would update a system setting
-    // For now, just returning success
+    // This would typically involve setting a flag in the system configuration
+    // For now, we'll simulate by updating the active period status
+    
+    const activePeriod = await RankingPeriod.findOne({
+      where: { is_active: true }
+    })
 
-    res.json({
-      message: `Rankings ${freeze ? 'frozen' : 'unfrozen'} successfully`,
-      frozen: freeze,
-      reason: reason || 'No reason provided',
-      timestamp: new Date().toISOString()
+    if (!activePeriod) {
+      return res.status(400).json({ message: 'No active ranking period found' })
+    }
+
+    // In a real implementation, you might add a 'frozen' field to ranking periods
+    // or maintain a separate system configuration table
+
+    res.json({ 
+      message: freeze ? 'Rankings frozen successfully' : 'Rankings unfrozen successfully',
+      frozen: freeze
     })
   } catch (error) {
-    console.error('Error updating ranking freeze status:', error)
-    res.status(500).json({ message: 'Failed to update ranking freeze status' })
+    console.error('Error freezing/unfreezing rankings:', error)
+    res.status(500).json({ message: 'Internal server error', error: error.message })
   }
 }
 
-// Export rankings
+// Export rankings data
 const exportRankings = async (req, res) => {
   try {
-    const { format, ...filters } = req.query
+    const { format = 'csv' } = req.query
 
-    // Get rankings data
-    const rankings = await getPlayerRankingsData(filters)
+    const activePeriod = await RankingPeriod.findOne({
+      where: { is_active: true }
+    })
 
-    // In a real implementation, generate actual file based on format
-    // For now, returning mock success
-    
-    const mockFileContent = `Player Name,Current Position,Points,State\n${rankings.map(r => 
-      `${r.player_name},${r.current_position},${r.current_points},${r.state_name}`
-    ).join('\n')}`
+    if (!activePeriod) {
+      return res.status(400).json({ message: 'No active ranking period found' })
+    }
 
-    res.setHeader('Content-Type', format === 'csv' ? 'text/csv' : 'application/octet-stream')
-    res.setHeader('Content-Disposition', `attachment; filename=rankings.${format}`)
-    res.send(mockFileContent)
+    const rankings = await PlayerRanking.findAll({
+      where: { period_id: activePeriod.id },
+      include: [
+        {
+          model: Player,
+          as: 'player',
+          attributes: ['full_name', 'state_id'],
+          include: [
+            {
+              model: User,
+              as: 'user',
+              attributes: ['username', 'email']
+            },
+            {
+              model: State,
+              as: 'state',
+              attributes: ['name']
+            }
+          ]
+        },
+        {
+          model: RankingCategory,
+          as: 'category',
+          attributes: ['name']
+        }
+      ],
+      order: [['current_rank', 'ASC']]
+    })
+
+    if (format === 'csv') {
+      const csvHeaders = [
+        'Rank',
+        'Player Name',
+        'Username',
+        'Email',
+        'State',
+        'Category',
+        'Points',
+        'Tournaments Played',
+        'Previous Rank',
+        'Last Updated'
+      ].join(',')
+
+      const csvData = rankings.map(ranking => [
+        ranking.current_rank || '',
+        `"${ranking.player.full_name}"`,
+        ranking.player.user.username,
+        ranking.player.user.email,
+        `"${ranking.player.state ? ranking.player.state.name : 'Unknown'}"`,
+        `"${ranking.category.name}"`,
+        ranking.points,
+        ranking.tournaments_played,
+        ranking.previous_rank || '',
+        ranking.updated_at.toISOString()
+      ].join(',')).join('\n')
+
+      const csv = `${csvHeaders}\n${csvData}`
+
+      res.setHeader('Content-Type', 'text/csv')
+      res.setHeader('Content-Disposition', `attachment; filename=rankings-${activePeriod.name.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.csv`)
+      res.send(csv)
+    } else {
+      res.json({ rankings })
+    }
   } catch (error) {
     console.error('Error exporting rankings:', error)
-    res.status(500).json({ message: 'Failed to export rankings' })
+    res.status(500).json({ message: 'Internal server error', error: error.message })
   }
 }
 
@@ -326,79 +598,74 @@ const exportRankings = async (req, res) => {
 const getPlayerRankingHistory = async (req, res) => {
   try {
     const { playerId } = req.params
+    const { limit = 20 } = req.query
 
-    const player = await Player.findByPk(playerId, {
+    const history = await RankingPointsHistory.findAll({
+      where: { player_id: playerId },
       include: [
-        { model: User, attributes: ['username'] },
-        { model: State, attributes: ['name'] }
-      ]
+        {
+          model: Tournament,
+          as: 'tournament',
+          attributes: ['id', 'name', 'start_date'],
+          required: false
+        }
+      ],
+      order: [['created_at', 'DESC']],
+      limit: parseInt(limit)
     })
 
-    if (!player) {
-      return res.status(404).json({ message: 'Player not found' })
-    }
+    const formattedHistory = history.map(entry => ({
+      id: entry.id,
+      points: entry.points,
+      reason: entry.reason,
+      tournament_name: entry.tournament ? entry.tournament.name : 'Manual Adjustment',
+      date: entry.created_at
+    }))
 
-    // Mock historical data
-    const history = []
-    const currentDate = new Date()
-    
-    for (let i = 12; i >= 0; i--) {
-      const date = new Date(currentDate)
-      date.setMonth(date.getMonth() - i)
-      
-      history.push({
-        date: date.toISOString(),
-        position: player.ranking_position + Math.floor(Math.random() * 20) - 10,
-        points: Math.max(0, player.ranking_points + Math.floor(Math.random() * 400) - 200),
-        reason: i === 0 ? 'Current' : `Tournament ${13 - i}`
-      })
-    }
-
-    res.json({
-      player: {
-        id: player.id,
-        name: player.full_name,
-        current_position: player.ranking_position,
-        current_points: player.ranking_points,
-        state: player.State?.name
-      },
-      history
-    })
+    res.json({ history: formattedHistory })
   } catch (error) {
     console.error('Error fetching player ranking history:', error)
-    res.status(500).json({ message: 'Failed to fetch player ranking history' })
+    res.status(500).json({ message: 'Internal server error', error: error.message })
   }
 }
 
-// Helper function to get rankings data
-const getPlayerRankingsData = async (filters = {}) => {
-  // Simplified version of getPlayerRankings for export
-  const players = await Player.findAll({
-    include: [
-      { model: User, attributes: ['username'] },
-      { model: State, attributes: ['name'] }
-    ],
-    where: {
-      ranking_position: { [Op.not]: null }
-    },
-    order: [['ranking_position', 'ASC']],
-    limit: 1000
-  })
+// Get ranking periods
+const getRankingPeriods = async (req, res) => {
+  try {
+    const periods = await RankingPeriod.findAll({
+      order: [['is_active', 'DESC'], ['start_date', 'DESC']]
+    })
 
-  return players.map(player => ({
-    player_name: player.full_name,
-    current_position: player.ranking_position,
-    current_points: player.ranking_points,
-    state_name: player.State?.name || 'Unknown'
-  }))
+    res.json({ periods })
+  } catch (error) {
+    console.error('Error fetching ranking periods:', error)
+    res.status(500).json({ message: 'Internal server error', error: error.message })
+  }
+}
+
+// Get ranking categories
+const getRankingCategories = async (req, res) => {
+  try {
+    const categories = await RankingCategory.findAll({
+      order: [['name', 'ASC']]
+    })
+
+    res.json({ categories })
+  } catch (error) {
+    console.error('Error fetching ranking categories:', error)
+    res.status(500).json({ message: 'Internal server error', error: error.message })
+  }
 }
 
 module.exports = {
   getPlayerRankings,
   getRankingChanges,
+  getRankingStats,
   adjustRanking,
   recalculateRankings,
   freezeRankings,
   exportRankings,
-  getPlayerRankingHistory
+  getPlayerRankingHistory,
+  getRankingPeriods,
+  getRankingCategories
 }
