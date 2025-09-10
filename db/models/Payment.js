@@ -62,12 +62,26 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(100),
       allowNull: true
     },
+    transaction_id: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      unique: true
+    },
+    description: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    metadata: {
+      type: DataTypes.JSONB,
+      allowNull: true,
+      defaultValue: {}
+    },
     status: {
       type: DataTypes.STRING(20),
       allowNull: false,
       defaultValue: 'pending',
       validate: {
-        isIn: [['pending', 'completed', 'failed', 'refunded']]
+        isIn: [['pending', 'completed', 'failed', 'refunded', 'cancelled']]
       }
     },
     transaction_date: {

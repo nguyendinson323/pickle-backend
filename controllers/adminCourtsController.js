@@ -1,4 +1,4 @@
-const { User, Club, Partner, Court, CourtReservation, State, sequelize } = require('../db/models')
+const { User, Club, Partner, Court, CourtReservation, State, Player, sequelize } = require('../db/models')
 const { Op } = require('sequelize')
 
 // Get courts with filters and statistics
@@ -62,56 +62,69 @@ const getCourts = async (req, res) => {
       ]
     }
 
-    // Fetch courts with associations
+    // Fetch courts with associations based on owner_type and owner_id
     const courts = await Court.findAll({
       where: whereConditions,
       include: [
         {
-          model: Club,
-          as: 'Club',
-          attributes: ['id', 'business_name'],
-          required: false
-        },
-        {
-          model: Partner,
-          as: 'Partner', 
-          attributes: ['id', 'business_name'],
-          required: false
+          model: State,
+          as: 'state',
+          attributes: ['id', 'name', 'short_code'],
+          required: true
         }
       ],
       order: [['created_at', 'DESC']],
       limit: 1000
     })
 
-    // Transform data for frontend
-    const transformedCourts = courts.map(court => ({
-      id: court.id,
-      name: court.name,
-      club_id: court.club_id,
-      club_name: court.Club?.business_name || null,
-      partner_id: court.partner_id,
-      partner_name: court.Partner?.business_name || null,
-      surface_type: court.surface_type,
-      lighting: court.lighting,
-      indoor: court.indoor,
-      status: court.status,
-      hourly_rate: court.hourly_rate,
-      location: {
+    // Get owner details for each court
+    const courtsWithOwners = await Promise.all(courts.map(async (court) => {
+      let ownerName = null
+      let ownerDetails = null
+      
+      if (court.owner_type === 'club') {
+        const club = await Club.findByPk(court.owner_id, {
+          attributes: ['id', 'name', 'manager_name']
+        })
+        ownerName = club?.name
+        ownerDetails = club
+      } else if (court.owner_type === 'partner') {
+        const partner = await Partner.findByPk(court.owner_id, {
+          attributes: ['id', 'business_name', 'contact_name']
+        })
+        ownerName = partner?.business_name
+        ownerDetails = partner
+      }
+
+      return {
+        id: court.id,
+        name: court.name,
+        owner_type: court.owner_type,
+        owner_id: court.owner_id,
+        owner_name: ownerName,
+        owner_details: ownerDetails,
         address: court.address,
-        city: court.city,
-        state: court.state,
+        state_id: court.state_id,
+        state_name: court.state?.name,
+        court_count: court.court_count,
+        surface_type: court.surface_type,
+        indoor: court.indoor,
+        lights: court.lights,
+        amenities: court.amenities,
+        description: court.description,
         latitude: court.latitude,
-        longitude: court.longitude
-      },
-      total_reservations: court.total_reservations || 0,
-      revenue_generated: court.revenue_generated || 0
+        longitude: court.longitude,
+        status: court.status,
+        created_at: court.created_at,
+        updated_at: court.updated_at
+      }
     }))
 
     // Apply owner filter after transformation
-    let filteredCourts = transformedCourts
+    let filteredCourts = courtsWithOwners
     if (owner) {
-      filteredCourts = transformedCourts.filter(court => {
-        const ownerName = court.club_name || court.partner_name || ''
+      filteredCourts = courtsWithOwners.filter(court => {
+        const ownerName = court.owner_name || ''
         return ownerName.toLowerCase().includes(owner.toLowerCase())
       })
     }
@@ -124,19 +137,32 @@ const getCourts = async (req, res) => {
     }, {})
 
     const totalReservations = await CourtReservation.count()
-    const totalRevenue = filteredCourts.reduce((sum, court) => sum + (court.revenue_generated || 0), 0)
+    
+    // Get reservation counts per court for revenue calculation
+    const courtReservationCounts = await CourtReservation.findAll({
+      attributes: [
+        'court_id',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'reservation_count'],
+        [sequelize.fn('SUM', sequelize.col('amount')), 'total_revenue']
+      ],
+      group: ['court_id'],
+      raw: true
+    })
+
+    const totalRevenue = courtReservationCounts.reduce((sum, court) => sum + parseFloat(court.total_revenue || 0), 0)
+    const pendingCourts = await Court.count({ where: { status: 'pending' } })
 
     const stats = {
       totalCourts,
-      activeCourts: totalCourts,
-      availableCourts: statusCounts.available || 0,
-      occupiedCourts: statusCounts.occupied || 0,
+      activeCourts: statusCounts.active || 0,
+      availableCourts: statusCounts.active || 0,
+      occupiedCourts: 0, // Would need real-time data
       maintenanceCourts: statusCounts.maintenance || 0,
       totalReservations,
       totalRevenue,
       averageUtilization: totalCourts > 0 ? Math.round((totalReservations / totalCourts) * 100) / 100 : 0,
-      topPerformingCourt: filteredCourts.length > 0 ? filteredCourts.sort((a, b) => b.revenue_generated - a.revenue_generated)[0].name : 'N/A',
-      pendingApprovals: Math.floor(Math.random() * 5) // Mock pending approvals
+      topPerformingCourt: filteredCourts.length > 0 ? filteredCourts[0].name : 'N/A',
+      pendingApprovals: pendingCourts
     }
 
     res.json({
@@ -189,17 +215,23 @@ const getCourtReservations = async (req, res) => {
       where: whereConditions,
       include: [
         {
-          model: User,
-          attributes: ['id', 'username', 'role'],
+          model: Player,
+          as: 'player',
+          include: [{
+            model: User,
+            as: 'user',
+            attributes: ['id', 'username', 'role']
+          }],
           required: true
         },
         {
           model: Court,
+          as: 'court',
           attributes: ['id', 'name'],
           required: true
         }
       ],
-      order: [['start_time', 'DESC']],
+      order: [['date', 'DESC'], ['start_time', 'DESC']],
       limit: 1000
     })
 
@@ -207,15 +239,19 @@ const getCourtReservations = async (req, res) => {
     const transformedReservations = reservations.map(reservation => ({
       id: reservation.id,
       court_id: reservation.court_id,
-      user_id: reservation.user_id,
-      user_name: reservation.User.username,
-      user_type: reservation.User.role,
+      court_name: reservation.court?.name,
+      player_id: reservation.player_id,
+      player_name: reservation.player?.user?.username,
+      user_type: reservation.player?.user?.role,
+      date: reservation.date,
       start_time: reservation.start_time,
       end_time: reservation.end_time,
       status: reservation.status,
-      amount_paid: reservation.amount_paid || 0,
-      payment_status: reservation.payment_status || 'pending',
-      created_at: reservation.created_at
+      payment_status: reservation.payment_status,
+      amount: reservation.amount,
+      stripe_payment_id: reservation.stripe_payment_id,
+      created_at: reservation.created_at,
+      updated_at: reservation.updated_at
     }))
 
     res.json(transformedReservations)

@@ -77,15 +77,15 @@ const adminPaymentsController = {
       // User search in associated user table
       const include = [{
         model: User,
-        attributes: ['id', 'first_name', 'last_name', 'email'],
+        as: 'user',
+        attributes: ['id', 'email', 'username', 'role'],
         required: false
       }]
 
       if (user_search) {
         include[0].where = {
           [Op.or]: [
-            { first_name: { [Op.iLike]: `%${user_search}%` } },
-            { last_name: { [Op.iLike]: `%${user_search}%` } },
+            { username: { [Op.iLike]: `%${user_search}%` } },
             { email: { [Op.iLike]: `%${user_search}%` } }
           ]
         }
@@ -475,15 +475,15 @@ const adminPaymentsController = {
 
       const include = [{
         model: User,
-        attributes: ['id', 'first_name', 'last_name', 'email'],
+        as: 'user',
+        attributes: ['id', 'email', 'username', 'role'],
         required: false
       }]
 
       if (user_search) {
         include[0].where = {
           [Op.or]: [
-            { first_name: { [Op.iLike]: `%${user_search}%` } },
-            { last_name: { [Op.iLike]: `%${user_search}%` } },
+            { username: { [Op.iLike]: `%${user_search}%` } },
             { email: { [Op.iLike]: `%${user_search}%` } }
           ]
         }
@@ -499,8 +499,8 @@ const adminPaymentsController = {
       // Generate CSV
       const csvHeader = 'ID,Amount,Currency,Status,Payment Method,Transaction ID,Description,User Name,User Email,Created At\n'
       const csvData = payments.map(payment => {
-        const userName = payment.User ? `${payment.User.first_name} ${payment.User.last_name}` : 'N/A'
-        const userEmail = payment.User ? payment.User.email : 'N/A'
+        const userName = payment.user ? payment.user.username : 'N/A'
+        const userEmail = payment.user ? payment.user.email : 'N/A'
         
         return [
           payment.id,

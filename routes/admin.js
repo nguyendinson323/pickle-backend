@@ -8,11 +8,16 @@ const adminTournamentsController = require('../controllers/adminTournamentsContr
 const adminMicrositesController = require('../controllers/adminMicrositesController')
 const adminReportsController = require('../controllers/adminReportsController')
 const adminPaymentsController = require('../controllers/adminPaymentsController')
+const adminDashboardController = require('../controllers/adminDashboardController')
 const { authenticate } = require('../middlewares/authMiddleware')
 const { authorize } = require('../middlewares/authorizationMiddleware')
 
 router.use(authenticate)
 router.use(authorize('admin'))
+
+// Dashboard Routes
+router.get('/dashboard', adminDashboardController.getDashboardData)
+router.put('/approvals/:id', adminDashboardController.updateApproval)
 
 // User Management Routes
 router.get('/users', adminUserManagementController.getUsers)
