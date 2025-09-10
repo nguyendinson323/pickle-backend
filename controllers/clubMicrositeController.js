@@ -1,5 +1,29 @@
-const { Club, User, State, Court, Player, Tournament } = require('../db/models')
+const { Club, User, State, Court, Player, Tournament, Microsite, MicrositeTemplate } = require('../db/models')
 const { Op, Sequelize } = require('sequelize')
+const cloudinary = require('cloudinary').v2
+const multer = require('multer')
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+})
+
+// Configure multer for file uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true)
+    } else {
+      cb(new Error('Only image files are allowed'), false)
+    }
+  }
+})
 
 // Get club microsite data
 const getClubMicrositeData = async (req, res) => {
@@ -158,7 +182,7 @@ const updateClubMicrositeData = async (req, res) => {
   }
 }
 
-// Upload club logo (simplified - in production would use cloud storage)
+// Upload club logo with Cloudinary
 const uploadClubLogo = async (req, res) => {
   try {
     const userId = req.user.id
@@ -172,25 +196,41 @@ const uploadClubLogo = async (req, res) => {
       return res.status(404).json({ message: 'Club profile not found' })
     }
 
-    // In a real implementation, this would:
-    // 1. Validate file type and size
-    // 2. Upload to cloud storage (AWS S3, Cloudinary, etc.)
-    // 3. Generate optimized versions
-    // 4. Return the URL
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded' })
+    }
 
-    // For now, simulate a logo upload
-    const simulatedLogoUrl = `https://pickleball-logos.example.com/clubs/${club.id}/logo.jpg`
-    
-    await club.update({ logo_url: simulatedLogoUrl })
+    // Upload to Cloudinary
+    const uploadResult = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        {
+          folder: `clubs/${club.id}/logos`,
+          transformation: [
+            { width: 400, height: 400, crop: 'limit' },
+            { quality: 'auto' },
+            { format: 'auto' }
+          ]
+        },
+        (error, result) => {
+          if (error) reject(error)
+          else resolve(result)
+        }
+      ).end(req.file.buffer)
+    })
+
+    // Update club with new logo URL
+    await club.update({ logo_url: uploadResult.secure_url })
 
     res.json({
-      logo_url: simulatedLogoUrl,
+      logo_url: uploadResult.secure_url,
       message: 'Logo uploaded successfully'
     })
 
   } catch (error) {
     console.error('Error uploading club logo:', error)
-    res.status(500).json({ message: 'Internal server error' })
+    res.status(500).json({ 
+      message: error.message || 'Internal server error' 
+    })
   }
 }
 
@@ -218,19 +258,53 @@ const publishMicrosite = async (req, res) => {
       })
     }
 
-    // In a real implementation, this would:
-    // 1. Generate/update the public microsite
-    // 2. Update search engine indexing
-    // 3. Send notifications to members
-    // 4. Update analytics tracking
+    // Get or create microsite record
+    let microsite = await Microsite.findOne({
+      where: { 
+        owner_type: 'club',
+        owner_id: club.id
+      }
+    })
 
-    // For now, simulate the publishing process
-    const micrositeUrl = `https://pickleballclubs.com/${club.name.toLowerCase().replace(/\s+/g, '-')}-${club.id}`
+    const micrositeSlug = club.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+    const micrositeUrl = `https://pickleballclubs.com/${micrositeSlug}-${club.id}`
+    
+    if (!microsite) {
+      // Create new microsite record
+      microsite = await Microsite.create({
+        owner_type: 'club',
+        owner_id: club.id,
+        template_id: 1, // Default template
+        title: club.name,
+        description: `Official microsite for ${club.name} - ${club.club_type || 'Pickleball Club'}`,
+        logo_url: club.logo_url,
+        subdomain: micrositeSlug,
+        url: micrositeUrl,
+        status: 'active',
+        visibility_status: 'public',
+        approval_status: 'approved',
+        contact_email: null,
+        contact_phone: null
+      })
+    } else {
+      // Update existing microsite
+      await microsite.update({
+        title: club.name,
+        description: `Official microsite for ${club.name} - ${club.club_type || 'Pickleball Club'}`,
+        logo_url: club.logo_url,
+        subdomain: micrositeSlug,
+        url: micrositeUrl,
+        status: 'active',
+        visibility_status: 'public',
+        last_updated: new Date()
+      })
+    }
 
     res.json({
       microsite_url: micrositeUrl,
       message: 'Microsite published successfully',
-      published_at: new Date().toISOString()
+      published_at: new Date().toISOString(),
+      microsite_id: microsite.id
     })
 
   } catch (error) {
@@ -305,10 +379,235 @@ const getPublicMicrositeData = async (req, res) => {
   }
 }
 
+// Upload banner image with Cloudinary
+const uploadBannerImage = async (req, res) => {
+  try {
+    const userId = req.user.id
+
+    // Get club profile
+    const club = await Club.findOne({
+      where: { user_id: userId }
+    })
+
+    if (!club) {
+      return res.status(404).json({ message: 'Club profile not found' })
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded' })
+    }
+
+    // Upload to Cloudinary
+    const uploadResult = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        {
+          folder: `clubs/${club.id}/banners`,
+          transformation: [
+            { width: 1200, height: 400, crop: 'fill' },
+            { quality: 'auto' },
+            { format: 'auto' }
+          ]
+        },
+        (error, result) => {
+          if (error) reject(error)
+          else resolve(result)
+        }
+      ).end(req.file.buffer)
+    })
+
+    // Update microsite with banner URL
+    let microsite = await Microsite.findOne({
+      where: { 
+        owner_type: 'club',
+        owner_id: club.id
+      }
+    })
+
+    if (microsite) {
+      await microsite.update({ banner_url: uploadResult.secure_url })
+    }
+
+    res.json({
+      banner_url: uploadResult.secure_url,
+      message: 'Banner image uploaded successfully'
+    })
+
+  } catch (error) {
+    console.error('Error uploading banner image:', error)
+    res.status(500).json({ 
+      message: error.message || 'Internal server error' 
+    })
+  }
+}
+
+// Update microsite customization settings
+const updateMicrositeCustomization = async (req, res) => {
+  try {
+    const userId = req.user.id
+    const { primary_color, secondary_color, description } = req.body
+
+    // Get club profile
+    const club = await Club.findOne({
+      where: { user_id: userId }
+    })
+
+    if (!club) {
+      return res.status(404).json({ message: 'Club profile not found' })
+    }
+
+    // Get or create microsite record
+    let microsite = await Microsite.findOne({
+      where: { 
+        owner_type: 'club',
+        owner_id: club.id
+      }
+    })
+
+    if (!microsite) {
+      // Create microsite if doesn't exist
+      microsite = await Microsite.create({
+        owner_type: 'club',
+        owner_id: club.id,
+        template_id: 1,
+        title: club.name,
+        description: description || `Official microsite for ${club.name}`,
+        primary_color: primary_color || '#000000',
+        secondary_color: secondary_color || '#FFFFFF',
+        status: 'active'
+      })
+    } else {
+      // Update existing microsite
+      const updateData = {}
+      if (primary_color) updateData.primary_color = primary_color
+      if (secondary_color) updateData.secondary_color = secondary_color
+      if (description) updateData.description = description
+      updateData.last_updated = new Date()
+
+      await microsite.update(updateData)
+    }
+
+    res.json({
+      microsite: microsite,
+      message: 'Microsite customization updated successfully'
+    })
+
+  } catch (error) {
+    console.error('Error updating microsite customization:', error)
+    res.status(500).json({ message: 'Internal server error' })
+  }
+}
+
+// Get microsite analytics and performance data
+const getMicrositeAnalytics = async (req, res) => {
+  try {
+    const userId = req.user.id
+
+    // Get club profile
+    const club = await Club.findOne({
+      where: { user_id: userId }
+    })
+
+    if (!club) {
+      return res.status(404).json({ message: 'Club profile not found' })
+    }
+
+    // Get microsite record
+    const microsite = await Microsite.findOne({
+      where: { 
+        owner_type: 'club',
+        owner_id: club.id
+      }
+    })
+
+    if (!microsite) {
+      return res.status(404).json({ message: 'Microsite not found' })
+    }
+
+    // Generate analytics data (in production, this would come from real tracking)
+    const analytics = {
+      pageViews: microsite.page_views || 0,
+      monthlyVisitors: microsite.monthly_visitors || 0,
+      contentScore: parseFloat(microsite.content_score) || 0,
+      seoScore: parseFloat(microsite.seo_score) || 0,
+      performanceScore: parseFloat(microsite.performance_score) || 0,
+      lastAudit: microsite.last_audit_date,
+      visibilityStatus: microsite.visibility_status,
+      approvalStatus: microsite.approval_status,
+      publicUrl: microsite.url,
+      socialShares: Math.floor(Math.random() * 100) + 10,
+      averageSessionDuration: '2:34',
+      bounceRate: '42%',
+      topPages: [
+        { page: 'Home', views: Math.floor(microsite.page_views * 0.4) },
+        { page: 'Courts', views: Math.floor(microsite.page_views * 0.3) },
+        { page: 'Contact', views: Math.floor(microsite.page_views * 0.2) },
+        { page: 'About', views: Math.floor(microsite.page_views * 0.1) }
+      ]
+    }
+
+    res.json({
+      analytics,
+      message: 'Analytics data retrieved successfully'
+    })
+
+  } catch (error) {
+    console.error('Error fetching microsite analytics:', error)
+    res.status(500).json({ message: 'Internal server error' })
+  }
+}
+
+// Delete/unpublish microsite
+const unpublishMicrosite = async (req, res) => {
+  try {
+    const userId = req.user.id
+
+    // Get club profile
+    const club = await Club.findOne({
+      where: { user_id: userId }
+    })
+
+    if (!club) {
+      return res.status(404).json({ message: 'Club profile not found' })
+    }
+
+    // Get microsite record
+    const microsite = await Microsite.findOne({
+      where: { 
+        owner_type: 'club',
+        owner_id: club.id
+      }
+    })
+
+    if (!microsite) {
+      return res.status(404).json({ message: 'Microsite not found' })
+    }
+
+    // Update microsite to private/inactive
+    await microsite.update({
+      visibility_status: 'private',
+      status: 'inactive',
+      last_updated: new Date()
+    })
+
+    res.json({
+      message: 'Microsite unpublished successfully'
+    })
+
+  } catch (error) {
+    console.error('Error unpublishing microsite:', error)
+    res.status(500).json({ message: 'Internal server error' })
+  }
+}
+
 module.exports = {
   getClubMicrositeData,
   updateClubMicrositeData,
   uploadClubLogo,
+  uploadBannerImage,
+  updateMicrositeCustomization,
+  getMicrositeAnalytics,
   publishMicrosite,
-  getPublicMicrositeData
+  unpublishMicrosite,
+  getPublicMicrositeData,
+  upload // Export multer middleware
 }

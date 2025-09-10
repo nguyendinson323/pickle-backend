@@ -4,6 +4,12 @@ const authorize = (...allowedRoles) => {
       return res.status(401).json({ message: 'Authentication required' })
     }
 
+    console.log('Authorization check:', {
+      userRole: req.userRole,
+      allowedRoles,
+      includes: allowedRoles.includes(req.userRole)
+    })
+
     if (!allowedRoles.includes(req.userRole)) {
       return res.status(403).json({ message: 'Insufficient permissions' })
     }

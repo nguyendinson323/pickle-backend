@@ -6,34 +6,35 @@ const coachSessionsController = require('../controllers/coachSessionsController'
 const coachCertificationsController = require('../controllers/coachCertificationsController')
 const coachStudentsController = require('../controllers/coachStudentsController')
 const coachMembershipController = require('../controllers/coachMembershipController')
+const coachProfileController = require('../controllers/coachProfileController')
 
 // ==================== SESSIONS ROUTES ====================
 
 // Get all coach sessions data (sessions, availability, stats)
 router.get('/sessions', 
   authenticate, 
-  authorize(['coach']), 
+  authorize('coach'), 
   coachSessionsController.getCoachSessionsData
 )
 
 // Update coaching session status
 router.put('/sessions/:sessionId/status', 
   authenticate, 
-  authorize(['coach']), 
+  authorize('coach'), 
   coachSessionsController.updateSessionStatus
 )
 
 // Add coach availability
 router.post('/availability', 
   authenticate, 
-  authorize(['coach']), 
+  authorize('coach'), 
   coachSessionsController.addAvailability
 )
 
 // Remove coach availability
 router.delete('/availability/:availabilityId', 
   authenticate, 
-  authorize(['coach']), 
+  authorize('coach'), 
   coachSessionsController.removeAvailability
 )
 
@@ -42,35 +43,35 @@ router.delete('/availability/:availabilityId',
 // Get all coach certifications data
 router.get('/certifications', 
   authenticate, 
-  authorize(['coach']), 
+  authorize('coach'), 
   coachCertificationsController.getCoachCertificationsData
 )
 
 // Add new certification
 router.post('/certifications', 
   authenticate, 
-  authorize(['coach']), 
+  authorize('coach'), 
   coachCertificationsController.addCertification
 )
 
 // Update certification
 router.put('/certifications/:certificationId', 
   authenticate, 
-  authorize(['coach']), 
+  authorize('coach'), 
   coachCertificationsController.updateCertification
 )
 
 // Delete certification
 router.delete('/certifications/:certificationId', 
   authenticate, 
-  authorize(['coach']), 
+  authorize('coach'), 
   coachCertificationsController.deleteCertification
 )
 
 // Download certificate PDF
 router.get('/certifications/:certificationId/download', 
   authenticate, 
-  authorize(['coach']), 
+  authorize('coach'), 
   coachCertificationsController.downloadCertificate
 )
 
@@ -79,28 +80,28 @@ router.get('/certifications/:certificationId/download',
 // Get all coach students data
 router.get('/students', 
   authenticate, 
-  authorize(['coach']), 
+  authorize('coach'), 
   coachStudentsController.getCoachStudentsData
 )
 
 // Get detailed information for a specific student
 router.get('/students/:studentId', 
   authenticate, 
-  authorize(['coach']), 
+  authorize('coach'), 
   coachStudentsController.getStudentDetails
 )
 
 // Update student NRTP level
 router.put('/students/:studentId/level', 
   authenticate, 
-  authorize(['coach']), 
+  authorize('coach'), 
   coachStudentsController.updateStudentLevel
 )
 
 // Add a note about a student
 router.post('/students/:studentId/notes', 
   authenticate, 
-  authorize(['coach']), 
+  authorize('coach'), 
   coachStudentsController.addStudentNote
 )
 
@@ -109,36 +110,66 @@ router.post('/students/:studentId/notes',
 // Get coach membership data
 router.get('/membership', 
   authenticate, 
-  authorize(['coach']), 
+  authorize('coach'), 
   coachMembershipController.getCoachMembershipData
 )
 
 // Subscribe to a plan
 router.post('/membership/subscribe', 
   authenticate, 
-  authorize(['coach']), 
+  authorize('coach'), 
   coachMembershipController.subscribeToCoachPlan
 )
 
 // Cancel subscription
 router.post('/membership/cancel', 
   authenticate, 
-  authorize(['coach']), 
+  authorize('coach'), 
   coachMembershipController.cancelCoachSubscription
 )
 
 // Renew subscription
 router.post('/membership/renew', 
   authenticate, 
-  authorize(['coach']), 
+  authorize('coach'), 
   coachMembershipController.renewCoachSubscription
 )
 
 // Update payment method
 router.put('/membership/payment-method', 
   authenticate, 
-  authorize(['coach']), 
+  authorize('coach'), 
   coachMembershipController.updateCoachPaymentMethod
+)
+
+// ==================== PROFILE ROUTES ====================
+
+// Get coach dashboard (profile + basic stats)
+router.get('/dashboard', 
+  authenticate, 
+  authorize('coach'), 
+  coachProfileController.getCoachDashboard
+)
+
+// Get coach profile data
+router.get('/profile', 
+  authenticate, 
+  authorize('coach'), 
+  coachProfileController.getCoachProfile
+)
+
+// Update coach profile
+router.put('/profile', 
+  authenticate, 
+  authorize('coach'), 
+  coachProfileController.updateCoachProfile
+)
+
+// Upload profile photo
+router.put('/profile/photo', 
+  authenticate, 
+  authorize('coach'), 
+  coachProfileController.uploadProfilePhoto
 )
 
 module.exports = router

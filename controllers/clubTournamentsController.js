@@ -395,7 +395,7 @@ const getTournamentRegistrations = async (req, res) => {
         },
         {
           model: Player,
-          as: 'partner_player',
+          as: 'partnerPlayer',
           include: [
             {
               model: User,
@@ -469,7 +469,7 @@ const generateTournamentMatches = async (req, res) => {
             },
             {
               model: Player,
-              as: 'partner_player',
+              as: 'partnerPlayer',
               required: false
             }
           ]

@@ -85,6 +85,33 @@ const refreshToken = async (req, res) => {
   }
 }
 
+// Update profile for different user types
+const updateProfile = async (req, res) => {
+  try {
+    const user = req.user
+    const updateData = req.body
+    
+    const result = await authService.updateProfile(user, updateData)
+    
+    res.json(result)
+  } catch (error) {
+    res.status(500).json({ message: error.message })
+  }
+}
+
+// Get profile data
+const getProfile = async (req, res) => {
+  try {
+    const user = req.user
+    
+    const profileData = await authService.getProfile(user)
+    
+    res.json(profileData)
+  } catch (error) {
+    res.status(500).json({ message: error.message })
+  }
+}
+
 module.exports = {
   login,
   register,
@@ -92,5 +119,7 @@ module.exports = {
   forgotPassword,
   resetPassword,
   getDashboard,
-  refreshToken
+  refreshToken,
+  updateProfile,
+  getProfile
 }

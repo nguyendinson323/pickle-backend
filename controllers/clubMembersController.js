@@ -360,11 +360,71 @@ const bulkUpdateMembers = async (req, res) => {
   }
 }
 
+// Update member information
+const updateMemberInfo = async (req, res) => {
+  try {
+    const { memberId } = req.params
+    const { full_name, nrtp_level, affiliation_expires_at } = req.body
+    const userId = req.user.id
+
+    // Get club profile
+    const club = await Club.findOne({
+      where: { user_id: userId }
+    })
+
+    if (!club) {
+      return res.status(404).json({ message: 'Club profile not found' })
+    }
+
+    // Find member and verify club ownership
+    const member = await Player.findOne({
+      where: { 
+        id: memberId,
+        club_id: club.id
+      },
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'username', 'email', 'phone', 'is_active']
+        },
+        {
+          model: State,
+          as: 'state',
+          attributes: ['id', 'name'],
+          required: false
+        }
+      ]
+    })
+
+    if (!member) {
+      return res.status(404).json({ message: 'Member not found or access denied' })
+    }
+
+    // Update member information
+    await member.update({
+      full_name,
+      nrtp_level,
+      affiliation_expires_at: affiliation_expires_at || null
+    })
+
+    res.json({
+      member: member,
+      message: 'Member information updated successfully'
+    })
+
+  } catch (error) {
+    console.error('Error updating member info:', error)
+    res.status(500).json({ message: 'Internal server error' })
+  }
+}
+
 module.exports = {
   getClubMembersData,
   updateMemberStatus,
   removeMember,
   extendMembership,
   inviteNewMember,
-  bulkUpdateMembers
+  bulkUpdateMembers,
+  updateMemberInfo
 }

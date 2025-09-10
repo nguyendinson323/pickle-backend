@@ -46,6 +46,11 @@ const getCoachMembershipData = async (req, res) => {
         user_id: userId,
         payment_type: 'membership'
       },
+      attributes: [
+        'id', 'user_id', 'amount', 'currency', 'payment_type', 'payment_method', 
+        'reference_type', 'reference_id', 'stripe_payment_id', 'status', 
+        'transaction_date', 'created_at', 'updated_at'
+      ],
       order: [['created_at', 'DESC']],
       limit: 10
     })
