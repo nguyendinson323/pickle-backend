@@ -5,17 +5,32 @@ const { Op, fn, col, literal } = require('sequelize')
 
 const getPartnerManagementData = async (req, res) => {
   try {
-    const partnerId = req.user.id
+    const userId = req.user.id
+
+    // Get partner record first
+    const partner = await Partner.findOne({
+      where: { user_id: userId }
+    })
+
+    if (!partner) {
+      return res.status(404).json({ message: 'Partner profile not found' })
+    }
 
     // Get courts
     const courts = await Court.findAll({
-      where: { partner_id: partnerId },
+      where: { 
+        owner_type: 'partner',
+        owner_id: partner.id 
+      },
       order: [['created_at', 'DESC']]
     })
 
     // Get tournaments
     const tournaments = await Tournament.findAll({
-      where: { partner_id: partnerId },
+      where: { 
+        organizer_type: 'partner',
+        organizer_id: partner.id 
+      },
       order: [['created_at', 'DESC']]
     })
 
@@ -24,7 +39,7 @@ const getPartnerManagementData = async (req, res) => {
     const maintenanceCourts = courts.filter(court => court.status === 'maintenance').length
     const activeTournaments = tournaments.filter(t => t.status === 'ongoing').length
     const upcomingTournaments = tournaments.filter(t => 
-      t.status === 'published' || t.status === 'registration_open'
+      t.status === 'upcoming'
     ).length
 
     // Get current month revenue
@@ -35,7 +50,10 @@ const getPartnerManagementData = async (req, res) => {
     const monthlyRevenue = await CourtReservation.findOne({
       include: [{
         model: Court,
-        where: { partner_id: partnerId },
+        where: { 
+          owner_type: 'partner',
+          owner_id: partner.id 
+        },
         attributes: []
       }],
       where: {
@@ -51,7 +69,10 @@ const getPartnerManagementData = async (req, res) => {
     const monthlyBookings = await CourtReservation.count({
       include: [{
         model: Court,
-        where: { partner_id: partnerId },
+        where: { 
+          owner_type: 'partner',
+          owner_id: partner.id 
+        },
         attributes: []
       }],
       where: {
@@ -75,20 +96,20 @@ const getPartnerManagementData = async (req, res) => {
     const formattedCourts = courts.map(court => ({
       id: court.id,
       name: court.name,
-      address: court.address,
-      city: court.city,
-      state: court.state,
-      zip_code: court.zip_code,
+      address: court.address || '',
+      city: '', // Not in database schema
+      state: '', // Not in database schema  
+      zip_code: '', // Not in database schema
       court_count: court.court_count,
-      surface_type: court.surface_type,
+      surface_type: court.surface_type || 'hard',
       indoor: court.indoor,
       lights: court.lights,
       description: court.description,
-      hourly_rate: parseFloat(court.hourly_rate),
+      hourly_rate: 0, // Not in database schema
       status: court.status,
-      amenities: court.amenities || [],
-      operating_hours: court.operating_hours || [],
-      images: court.images || [],
+      amenities: court.amenities ? court.amenities.split(',').filter(a => a.trim()) : [],
+      operating_hours: [], // Not in database schema
+      images: [], // Not in database schema
       created_at: court.createdAt,
       updated_at: court.updatedAt
     }))
@@ -98,21 +119,21 @@ const getPartnerManagementData = async (req, res) => {
       id: tournament.id,
       name: tournament.name,
       description: tournament.description,
-      tournament_type: tournament.tournament_type,
-      skill_level: tournament.skill_level,
+      tournament_type: tournament.tournament_type || 'singles',
+      skill_level: 'open', // Not in database schema
       start_date: tournament.start_date,
       end_date: tournament.end_date,
       registration_start: tournament.registration_start,
       registration_end: tournament.registration_end,
       max_participants: tournament.max_participants,
-      current_participants: tournament.current_participants,
+      current_participants: 0, // Not in database schema  
       entry_fee: tournament.entry_fee ? parseFloat(tournament.entry_fee) : null,
-      prize_pool: tournament.prize_pool ? parseFloat(tournament.prize_pool) : null,
+      prize_pool: null, // Not in database schema
       venue_name: tournament.venue_name,
       venue_address: tournament.venue_address,
       status: tournament.status,
-      rules: tournament.rules,
-      contact_info: tournament.contact_info,
+      rules: null, // Not in database schema
+      contact_info: null, // Not in database schema
       created_at: tournament.createdAt,
       updated_at: tournament.updatedAt
     }))
@@ -131,40 +152,40 @@ const getPartnerManagementData = async (req, res) => {
 
 const createCourt = async (req, res) => {
   try {
-    const partnerId = req.user.id
+    const userId = req.user.id
+
+    // Get partner record first
+    const partner = await Partner.findOne({
+      where: { user_id: userId }
+    })
+
+    if (!partner) {
+      return res.status(404).json({ message: 'Partner profile not found' })
+    }
     const {
       name,
       address,
-      city,
-      state,
-      zip_code,
       court_count,
       surface_type,
       indoor,
       lights,
       description,
-      hourly_rate,
-      amenities,
-      operating_hours
+      amenities
     } = req.body
 
     const court = await Court.create({
-      partner_id: partnerId,
+      owner_type: 'partner',
+      owner_id: partner.id,
+      state_id: partner.state_id, // Use partner's state
       name,
-      address,
-      city,
-      state,
-      zip_code,
-      court_count: parseInt(court_count),
-      surface_type,
+      address: address || '',
+      court_count: parseInt(court_count) || 1,
+      surface_type: surface_type || 'hard',
       indoor: Boolean(indoor),
       lights: Boolean(lights),
-      description,
-      hourly_rate: parseFloat(hourly_rate),
+      description: description || '',
       status: 'active',
-      amenities: amenities || [],
-      operating_hours: operating_hours || [],
-      images: []
+      amenities: Array.isArray(amenities) ? amenities.join(',') : (amenities || '')
     })
 
     const formattedCourt = {
@@ -188,7 +209,26 @@ const createCourt = async (req, res) => {
       updated_at: court.updatedAt
     }
 
-    res.status(201).json(formattedCourt)
+    res.status(201).json({
+      id: court.id,
+      name: court.name,
+      address: court.address || '',
+      city: '', 
+      state: '',
+      zip_code: '',
+      court_count: court.court_count,
+      surface_type: court.surface_type || 'hard',
+      indoor: court.indoor,
+      lights: court.lights,
+      description: court.description,
+      hourly_rate: 0,
+      status: court.status,
+      amenities: court.amenities ? court.amenities.split(',').filter(a => a.trim()) : [],
+      operating_hours: [],
+      images: [],
+      created_at: court.createdAt,
+      updated_at: court.updatedAt
+    })
 
   } catch (error) {
     console.error('Error creating court:', error)
@@ -198,14 +238,24 @@ const createCourt = async (req, res) => {
 
 const updateCourt = async (req, res) => {
   try {
-    const partnerId = req.user.id
+    const userId = req.user.id
     const { courtId } = req.params
     const updateData = req.body
+
+    // Get partner record first
+    const partner = await Partner.findOne({
+      where: { user_id: userId }
+    })
+
+    if (!partner) {
+      return res.status(404).json({ message: 'Partner profile not found' })
+    }
 
     const court = await Court.findOne({
       where: { 
         id: courtId,
-        partner_id: partnerId 
+        owner_type: 'partner',
+        owner_id: partner.id 
       }
     })
 
@@ -213,12 +263,9 @@ const updateCourt = async (req, res) => {
       return res.status(404).json({ message: 'Court not found' })
     }
 
-    // Parse numeric fields
+    // Parse and clean fields
     if (updateData.court_count) {
       updateData.court_count = parseInt(updateData.court_count)
-    }
-    if (updateData.hourly_rate) {
-      updateData.hourly_rate = parseFloat(updateData.hourly_rate)
     }
     if (updateData.indoor !== undefined) {
       updateData.indoor = Boolean(updateData.indoor)
@@ -226,6 +273,17 @@ const updateCourt = async (req, res) => {
     if (updateData.lights !== undefined) {
       updateData.lights = Boolean(updateData.lights)
     }
+    if (updateData.amenities) {
+      updateData.amenities = Array.isArray(updateData.amenities) ? updateData.amenities.join(',') : updateData.amenities
+    }
+    
+    // Remove fields that don't exist in database
+    delete updateData.city
+    delete updateData.state
+    delete updateData.zip_code
+    delete updateData.hourly_rate
+    delete updateData.operating_hours
+    delete updateData.images
 
     await court.update(updateData)
 
@@ -250,7 +308,26 @@ const updateCourt = async (req, res) => {
       updated_at: court.updatedAt
     }
 
-    res.json(formattedCourt)
+    res.json({
+      id: court.id,
+      name: court.name,
+      address: court.address || '',
+      city: '',
+      state: '',
+      zip_code: '',
+      court_count: court.court_count,
+      surface_type: court.surface_type || 'hard',
+      indoor: court.indoor,
+      lights: court.lights,
+      description: court.description,
+      hourly_rate: 0,
+      status: court.status,
+      amenities: court.amenities ? court.amenities.split(',').filter(a => a.trim()) : [],
+      operating_hours: [],
+      images: [],
+      created_at: court.createdAt,
+      updated_at: court.updatedAt
+    })
 
   } catch (error) {
     console.error('Error updating court:', error)
@@ -260,13 +337,23 @@ const updateCourt = async (req, res) => {
 
 const deleteCourt = async (req, res) => {
   try {
-    const partnerId = req.user.id
+    const userId = req.user.id
     const { courtId } = req.params
+
+    // Get partner record first
+    const partner = await Partner.findOne({
+      where: { user_id: userId }
+    })
+
+    if (!partner) {
+      return res.status(404).json({ message: 'Partner profile not found' })
+    }
 
     const court = await Court.findOne({
       where: { 
         id: courtId,
-        partner_id: partnerId 
+        owner_type: 'partner',
+        owner_id: partner.id 
       }
     })
 
@@ -301,44 +388,46 @@ const deleteCourt = async (req, res) => {
 
 const createTournament = async (req, res) => {
   try {
-    const partnerId = req.user.id
+    const userId = req.user.id
+
+    // Get partner record first
+    const partner = await Partner.findOne({
+      where: { user_id: userId }
+    })
+
+    if (!partner) {
+      return res.status(404).json({ message: 'Partner profile not found' })
+    }
     const {
       name,
       description,
       tournament_type,
-      skill_level,
       start_date,
       end_date,
       registration_start,
       registration_end,
       max_participants,
       entry_fee,
-      prize_pool,
       venue_name,
-      venue_address,
-      rules,
-      contact_info
+      venue_address
     } = req.body
 
     const tournament = await Tournament.create({
-      partner_id: partnerId,
+      organizer_type: 'partner',
+      organizer_id: partner.id,
+      state_id: partner.state_id, // Use partner's state
       name,
-      description,
-      tournament_type,
-      skill_level,
+      description: description || '',
+      tournament_type: tournament_type || 'singles',
       start_date: new Date(start_date),
       end_date: new Date(end_date),
       registration_start: new Date(registration_start),
       registration_end: new Date(registration_end),
       max_participants: max_participants ? parseInt(max_participants) : null,
-      current_participants: 0,
       entry_fee: entry_fee ? parseFloat(entry_fee) : null,
-      prize_pool: prize_pool ? parseFloat(prize_pool) : null,
-      venue_name,
-      venue_address,
-      status: 'draft',
-      rules,
-      contact_info
+      venue_name: venue_name || '',
+      venue_address: venue_address || '',
+      status: 'upcoming'
     })
 
     const formattedTournament = {
@@ -364,7 +453,28 @@ const createTournament = async (req, res) => {
       updated_at: tournament.updatedAt
     }
 
-    res.status(201).json(formattedTournament)
+    res.status(201).json({
+      id: tournament.id,
+      name: tournament.name,
+      description: tournament.description,
+      tournament_type: tournament.tournament_type || 'singles',
+      skill_level: 'open',
+      start_date: tournament.start_date,
+      end_date: tournament.end_date,
+      registration_start: tournament.registration_start,
+      registration_end: tournament.registration_end,
+      max_participants: tournament.max_participants,
+      current_participants: 0,
+      entry_fee: tournament.entry_fee ? parseFloat(tournament.entry_fee) : null,
+      prize_pool: null,
+      venue_name: tournament.venue_name,
+      venue_address: tournament.venue_address,
+      status: tournament.status,
+      rules: null,
+      contact_info: null,
+      created_at: tournament.createdAt,
+      updated_at: tournament.updatedAt
+    })
 
   } catch (error) {
     console.error('Error creating tournament:', error)
@@ -374,14 +484,24 @@ const createTournament = async (req, res) => {
 
 const updateTournament = async (req, res) => {
   try {
-    const partnerId = req.user.id
+    const userId = req.user.id
     const { tournamentId } = req.params
     const updateData = req.body
+
+    // Get partner record first
+    const partner = await Partner.findOne({
+      where: { user_id: userId }
+    })
+
+    if (!partner) {
+      return res.status(404).json({ message: 'Partner profile not found' })
+    }
 
     const tournament = await Tournament.findOne({
       where: { 
         id: tournamentId,
-        partner_id: partnerId 
+        organizer_type: 'partner',
+        organizer_id: partner.id 
       }
     })
 
@@ -403,9 +523,13 @@ const updateTournament = async (req, res) => {
     if (updateData.entry_fee) {
       updateData.entry_fee = parseFloat(updateData.entry_fee)
     }
-    if (updateData.prize_pool) {
-      updateData.prize_pool = parseFloat(updateData.prize_pool)
-    }
+    
+    // Remove fields that don't exist in database
+    delete updateData.skill_level
+    delete updateData.current_participants
+    delete updateData.prize_pool
+    delete updateData.rules
+    delete updateData.contact_info
 
     await tournament.update(updateData)
 
@@ -432,7 +556,28 @@ const updateTournament = async (req, res) => {
       updated_at: tournament.updatedAt
     }
 
-    res.json(formattedTournament)
+    res.json({
+      id: tournament.id,
+      name: tournament.name,
+      description: tournament.description,
+      tournament_type: tournament.tournament_type || 'singles',
+      skill_level: 'open',
+      start_date: tournament.start_date,
+      end_date: tournament.end_date,
+      registration_start: tournament.registration_start,
+      registration_end: tournament.registration_end,
+      max_participants: tournament.max_participants,
+      current_participants: 0,
+      entry_fee: tournament.entry_fee ? parseFloat(tournament.entry_fee) : null,
+      prize_pool: null,
+      venue_name: tournament.venue_name,
+      venue_address: tournament.venue_address,
+      status: tournament.status,
+      rules: null,
+      contact_info: null,
+      created_at: tournament.createdAt,
+      updated_at: tournament.updatedAt
+    })
 
   } catch (error) {
     console.error('Error updating tournament:', error)
@@ -442,13 +587,23 @@ const updateTournament = async (req, res) => {
 
 const deleteTournament = async (req, res) => {
   try {
-    const partnerId = req.user.id
+    const userId = req.user.id
     const { tournamentId } = req.params
+
+    // Get partner record first
+    const partner = await Partner.findOne({
+      where: { user_id: userId }
+    })
+
+    if (!partner) {
+      return res.status(404).json({ message: 'Partner profile not found' })
+    }
 
     const tournament = await Tournament.findOne({
       where: { 
         id: tournamentId,
-        partner_id: partnerId 
+        organizer_type: 'partner',
+        organizer_id: partner.id 
       }
     })
 
@@ -461,7 +616,7 @@ const deleteTournament = async (req, res) => {
       where: { tournament_id: tournamentId }
     })
 
-    if (registrationCount > 0 && tournament.status !== 'draft') {
+    if (registrationCount > 0 && tournament.status !== 'upcoming') {
       return res.status(400).json({ 
         message: 'Cannot delete tournament with registrations. Cancel it instead.' 
       })
@@ -479,13 +634,23 @@ const deleteTournament = async (req, res) => {
 
 const publishTournament = async (req, res) => {
   try {
-    const partnerId = req.user.id
+    const userId = req.user.id
     const { tournamentId } = req.params
+
+    // Get partner record first
+    const partner = await Partner.findOne({
+      where: { user_id: userId }
+    })
+
+    if (!partner) {
+      return res.status(404).json({ message: 'Partner profile not found' })
+    }
 
     const tournament = await Tournament.findOne({
       where: { 
         id: tournamentId,
-        partner_id: partnerId 
+        organizer_type: 'partner',
+        organizer_id: partner.id 
       }
     })
 
@@ -493,15 +658,15 @@ const publishTournament = async (req, res) => {
       return res.status(404).json({ message: 'Tournament not found' })
     }
 
-    if (tournament.status !== 'draft') {
-      return res.status(400).json({ message: 'Only draft tournaments can be published' })
+    if (tournament.status !== 'upcoming') {
+      return res.status(400).json({ message: 'Only upcoming tournaments can be published' })
     }
 
-    // Check if registration period is valid
+    // Check if registration period is valid  
     const now = new Date()
     const registrationStart = new Date(tournament.registration_start)
     
-    const newStatus = registrationStart <= now ? 'registration_open' : 'published'
+    const newStatus = registrationStart <= now ? 'ongoing' : 'upcoming'
 
     await tournament.update({ status: newStatus })
 
@@ -528,7 +693,28 @@ const publishTournament = async (req, res) => {
       updated_at: tournament.updatedAt
     }
 
-    res.json(formattedTournament)
+    res.json({
+      id: tournament.id,
+      name: tournament.name,
+      description: tournament.description,
+      tournament_type: tournament.tournament_type || 'singles',
+      skill_level: 'open',
+      start_date: tournament.start_date,
+      end_date: tournament.end_date,
+      registration_start: tournament.registration_start,
+      registration_end: tournament.registration_end,
+      max_participants: tournament.max_participants,
+      current_participants: 0,
+      entry_fee: tournament.entry_fee ? parseFloat(tournament.entry_fee) : null,
+      prize_pool: null,
+      venue_name: tournament.venue_name,
+      venue_address: tournament.venue_address,
+      status: tournament.status,
+      rules: null,
+      contact_info: null,
+      created_at: tournament.createdAt,
+      updated_at: tournament.updatedAt
+    })
 
   } catch (error) {
     console.error('Error publishing tournament:', error)
@@ -538,13 +724,23 @@ const publishTournament = async (req, res) => {
 
 const cancelTournament = async (req, res) => {
   try {
-    const partnerId = req.user.id
+    const userId = req.user.id
     const { tournamentId } = req.params
+
+    // Get partner record first
+    const partner = await Partner.findOne({
+      where: { user_id: userId }
+    })
+
+    if (!partner) {
+      return res.status(404).json({ message: 'Partner profile not found' })
+    }
 
     const tournament = await Tournament.findOne({
       where: { 
         id: tournamentId,
-        partner_id: partnerId 
+        organizer_type: 'partner',
+        organizer_id: partner.id 
       }
     })
 
@@ -552,11 +748,11 @@ const cancelTournament = async (req, res) => {
       return res.status(404).json({ message: 'Tournament not found' })
     }
 
-    if (tournament.status === 'completed' || tournament.status === 'cancelled') {
+    if (tournament.status === 'completed' || tournament.status === 'canceled') {
       return res.status(400).json({ message: 'Cannot cancel completed or already cancelled tournament' })
     }
 
-    await tournament.update({ status: 'cancelled' })
+    await tournament.update({ status: 'canceled' })
 
     const formattedTournament = {
       id: tournament.id,
@@ -581,7 +777,28 @@ const cancelTournament = async (req, res) => {
       updated_at: tournament.updatedAt
     }
 
-    res.json(formattedTournament)
+    res.json({
+      id: tournament.id,
+      name: tournament.name,
+      description: tournament.description,
+      tournament_type: tournament.tournament_type || 'singles',
+      skill_level: 'open',
+      start_date: tournament.start_date,
+      end_date: tournament.end_date,
+      registration_start: tournament.registration_start,
+      registration_end: tournament.registration_end,
+      max_participants: tournament.max_participants,
+      current_participants: 0,
+      entry_fee: tournament.entry_fee ? parseFloat(tournament.entry_fee) : null,
+      prize_pool: null,
+      venue_name: tournament.venue_name,
+      venue_address: tournament.venue_address,
+      status: tournament.status,
+      rules: null,
+      contact_info: null,
+      created_at: tournament.createdAt,
+      updated_at: tournament.updatedAt
+    })
 
   } catch (error) {
     console.error('Error cancelling tournament:', error)

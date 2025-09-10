@@ -1,4 +1,4 @@
-const { Partner, User, Microsite, MicrositePages, Court, Tournament, TournamentCategory, CourtReservation, Payment, Sequelize } = require('../db/models')
+const { Partner, User, Microsite, MicrositePage, Court, Tournament, TournamentCategory, TournamentRegistration, CourtReservation, Payment, Sequelize } = require('../db/models')
 const { Op } = require('sequelize')
 
 // Get partner microsite data (public or private view)
@@ -101,7 +101,7 @@ const getPartnerMicrositeData = async (req, res) => {
     }))
 
     // Get microsite pages
-    const pages = await MicrositePages.findAll({
+    const pages = await MicrositePage.findAll({
       where: { microsite_id: microsite.id },
       order: [['display_order', 'ASC'], ['id', 'ASC']]
     })
@@ -240,7 +240,7 @@ const createMicrositePage = async (req, res) => {
     }
 
     // Create page
-    const page = await MicrositePages.create({
+    const page = await MicrositePage.create({
       ...pageData,
       microsite_id: microsite.id
     })
@@ -273,10 +273,11 @@ const updateMicrositePage = async (req, res) => {
     }
 
     // Find page with microsite ownership check
-    const page = await MicrositePages.findOne({
+    const page = await MicrositePage.findOne({
       where: { id: pageId },
       include: [{
         model: Microsite,
+        as: 'microsite',
         where: {
           owner_type: 'partner',
           owner_id: partnerProfile.id
@@ -318,10 +319,11 @@ const deleteMicrositePage = async (req, res) => {
     }
 
     // Find page with microsite ownership check
-    const page = await MicrositePages.findOne({
+    const page = await MicrositePage.findOne({
       where: { id: pageId },
       include: [{
         model: Microsite,
+        as: 'microsite',
         where: {
           owner_type: 'partner',
           owner_id: partnerProfile.id
