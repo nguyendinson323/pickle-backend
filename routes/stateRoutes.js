@@ -8,6 +8,23 @@ const stateMicrositeController = require('../controllers/stateMicrositeControlle
 const stateStatisticsController = require('../controllers/stateStatisticsController')
 const stateDocumentsController = require('../controllers/stateDocumentsController')
 const stateMemberManagementController = require('../controllers/stateMemberManagementController')
+const stateDashboardController = require('../controllers/stateDashboardController')
+
+// ==================== DASHBOARD ROUTES ====================
+
+// Get state dashboard data
+router.get('/dashboard', 
+  authenticate, 
+  authorize(['state']), 
+  stateDashboardController.getStateDashboard
+)
+
+// Get state performance metrics
+router.get('/dashboard/metrics', 
+  authenticate, 
+  authorize(['state']), 
+  stateDashboardController.getStatePerformanceMetrics
+)
 
 // ==================== MANAGEMENT ROUTES ====================
 
@@ -185,11 +202,11 @@ router.get('/statistics/export',
 
 // ==================== DOCUMENTS ROUTES ====================
 
-// Get state documents data (documents, invoices, templates, stats)
+// Get state documents data
 router.get('/documents', 
   authenticate, 
   authorize(['state']), 
-  stateDocumentsController.getStateDocumentsData
+  stateDocumentsController.getStateDocuments
 )
 
 // Upload state document
@@ -213,33 +230,13 @@ router.delete('/documents/:documentId',
   stateDocumentsController.deleteStateDocument
 )
 
-// Create state invoice
-router.post('/invoices', 
+// Download state document
+router.get('/documents/:documentId/download', 
   authenticate, 
   authorize(['state']), 
-  stateDocumentsController.createStateInvoice
+  stateDocumentsController.downloadStateDocument
 )
 
-// Update state invoice
-router.put('/invoices/:invoiceId', 
-  authenticate, 
-  authorize(['state']), 
-  stateDocumentsController.updateStateInvoice
-)
-
-// Delete state invoice
-router.delete('/invoices/:invoiceId', 
-  authenticate, 
-  authorize(['state']), 
-  stateDocumentsController.deleteStateInvoice
-)
-
-// Create document template
-router.post('/document-templates', 
-  authenticate, 
-  authorize(['state']), 
-  stateDocumentsController.createDocumentTemplate
-)
 
 // ==================== MEMBER MANAGEMENT ROUTES ====================
 

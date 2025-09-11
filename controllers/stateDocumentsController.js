@@ -1,52 +1,24 @@
-const { StateCommittee, StateDocument, StateInvoice, StateDocumentTemplate, User, Tournament, Club, Partner, Player, Coach } = require('../db/models')
-const { Op, Sequelize } = require('sequelize')
-const multer = require('multer')
-const path = require('path')
-const fs = require('fs')
+const { Document, User, StateCommittee } = require('../db/models')
+const { Op } = require('sequelize')
+const cloudinary = require('cloudinary').v2
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadDir = 'uploads/state-documents/'
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true })
-    }
-    cb(null, uploadDir)
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname))
-  }
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
 })
 
-const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
-  },
-  fileFilter: function (req, file, cb) {
-    // Allow common document types
-    const allowedTypes = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.jpg', '.jpeg', '.png']
-    const fileExt = path.extname(file.originalname).toLowerCase()
-    
-    if (allowedTypes.includes(fileExt)) {
-      return cb(null, true)
-    } else {
-      cb(new Error('Invalid file type. Allowed types: PDF, DOC, DOCX, XLS, XLSX, TXT, JPG, PNG'))
-    }
-  }
-})
-
-// Get state documents, invoices, and templates
-const getStateDocumentsData = async (req, res) => {
+// Get state documents
+const getStateDocuments = async (req, res) => {
   try {
     const userId = req.user.id
     const { 
-      document_type, 
-      related_entity_type, 
+      file_type, 
       is_public, 
       start_date, 
-      end_date 
+      end_date,
+      search
     } = req.query
     
     // Get state committee profile
@@ -55,22 +27,18 @@ const getStateDocumentsData = async (req, res) => {
     })
     
     if (!stateCommittee) {
-      return res.status(404).json({ message: 'State committee profile not found' })
+      return res.status(404).json({ message: 'State committee not found' })
     }
-
-    const stateId = stateCommittee.id
 
     // Build where conditions for documents
     const documentWhere = {
-      state_committee_id: stateId
+      owner_id: userId
     }
 
-    if (document_type) {
-      documentWhere.document_type = document_type
-    }
-
-    if (related_entity_type) {
-      documentWhere.related_entity_type = related_entity_type
+    if (file_type) {
+      documentWhere.file_type = {
+        [Op.iLike]: `%${file_type}%`
+      }
     }
 
     if (is_public !== undefined) {
@@ -83,13 +51,20 @@ const getStateDocumentsData = async (req, res) => {
       }
     }
 
+    if (search) {
+      documentWhere[Op.or] = [
+        { title: { [Op.iLike]: `%${search}%` } },
+        { description: { [Op.iLike]: `%${search}%` } }
+      ]
+    }
+
     // Get documents
-    const documents = await StateDocument.findAll({
+    const documents = await Document.findAll({
       where: documentWhere,
       include: [
         {
           model: User,
-          as: 'created_by_user',
+          as: 'owner',
           attributes: ['id', 'username', 'email']
         }
       ],
@@ -97,99 +72,44 @@ const getStateDocumentsData = async (req, res) => {
       limit: 100
     })
 
-    // Get invoices
-    const invoices = await StateInvoice.findAll({
-      where: { state_committee_id: stateId },
-      order: [['created_at', 'DESC']],
-      limit: 100
-    })
-
-    // Get document templates
-    const templates = await StateDocumentTemplate.findAll({
-      where: { 
-        state_committee_id: stateId,
-        is_active: true
-      },
-      order: [['created_at', 'DESC']]
-    })
-
     // Calculate statistics
-    const totalDocuments = await StateDocument.count({
-      where: { state_committee_id: stateId }
+    const totalDocuments = await Document.count({
+      where: { owner_id: userId }
     })
 
     // Documents by type
-    const documentsByType = await StateDocument.findAll({
-      where: { state_committee_id: stateId },
+    const documentsByType = await Document.findAll({
+      where: { owner_id: userId },
       attributes: [
-        'document_type',
-        [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
+        'file_type',
+        [Document.sequelize.fn('COUNT', Document.sequelize.col('id')), 'count']
       ],
-      group: ['document_type']
+      group: ['file_type'],
+      raw: true
     })
 
     const documentsTypeCount = {}
     documentsByType.forEach(item => {
-      documentsTypeCount[item.document_type] = parseInt(item.dataValues.count)
+      const fileType = item.file_type || 'unknown'
+      documentsTypeCount[fileType] = parseInt(item.count) || 0
     })
 
-    const totalInvoices = await StateInvoice.count({
-      where: { state_committee_id: stateId }
+    // Public vs private documents
+    const publicDocuments = await Document.count({
+      where: { owner_id: userId, is_public: true }
     })
 
-    // Invoices by status
-    const invoicesByStatus = await StateInvoice.findAll({
-      where: { state_committee_id: stateId },
-      attributes: [
-        'status',
-        [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
-      ],
-      group: ['status']
+    const privateDocuments = await Document.count({
+      where: { owner_id: userId, is_public: false }
     })
-
-    const invoicesStatusCount = { draft: 0, sent: 0, paid: 0, overdue: 0, cancelled: 0 }
-    invoicesByStatus.forEach(item => {
-      invoicesStatusCount[item.status] = parseInt(item.dataValues.count)
-    })
-
-    // Financial summary
-    const financialSummary = await StateInvoice.findOne({
-      where: { state_committee_id: stateId },
-      attributes: [
-        [Sequelize.fn('SUM', Sequelize.col('total_amount')), 'total_invoiced'],
-        [Sequelize.fn('SUM', 
-          Sequelize.literal('CASE WHEN status = "paid" THEN total_amount ELSE 0 END')
-        ), 'total_paid'],
-        [Sequelize.fn('SUM', 
-          Sequelize.literal('CASE WHEN status IN ("sent", "overdue") THEN total_amount ELSE 0 END')
-        ), 'total_outstanding'],
-        [Sequelize.fn('SUM', 
-          Sequelize.literal('CASE WHEN status = "overdue" THEN total_amount ELSE 0 END')
-        ), 'overdue_amount']
-      ]
-    })
-
-    const financial = {
-      total_invoiced: parseFloat(financialSummary?.dataValues.total_invoiced) || 0,
-      total_paid: parseFloat(financialSummary?.dataValues.total_paid) || 0,
-      total_outstanding: parseFloat(financialSummary?.dataValues.total_outstanding) || 0,
-      overdue_amount: parseFloat(financialSummary?.dataValues.overdue_amount) || 0
-    }
 
     // Recent activity (last 7 days)
     const sevenDaysAgo = new Date()
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
 
-    const recentActivity = await StateDocument.count({
+    const recentActivity = await Document.count({
       where: {
-        state_committee_id: stateId,
-        created_at: {
-          [Op.gte]: sevenDaysAgo
-        }
-      }
-    }) + await StateInvoice.count({
-      where: {
-        state_committee_id: stateId,
+        owner_id: userId,
         created_at: {
           [Op.gte]: sevenDaysAgo
         }
@@ -199,22 +119,19 @@ const getStateDocumentsData = async (req, res) => {
     const stats = {
       total_documents: totalDocuments,
       documents_by_type: documentsTypeCount,
-      total_invoices: totalInvoices,
-      invoices_by_status: invoicesStatusCount,
-      financial_summary: financial,
+      public_documents: publicDocuments,
+      private_documents: privateDocuments,
       recent_activity: recentActivity
     }
 
     res.json({
       documents,
-      invoices,
-      templates,
       stats
     })
 
   } catch (error) {
-    console.error('Error fetching state documents data:', error)
-    res.status(500).json({ message: 'Internal server error' })
+    console.error('Error fetching state documents:', error)
+    res.status(500).json({ message: 'Failed to fetch documents' })
   }
 }
 
@@ -229,72 +146,61 @@ const uploadStateDocument = async (req, res) => {
     })
     
     if (!stateCommittee) {
-      return res.status(404).json({ message: 'State committee profile not found' })
+      return res.status(404).json({ message: 'State committee not found' })
     }
 
-    // Use multer middleware
-    upload.single('document')(req, res, async function (err) {
-      if (err) {
-        return res.status(400).json({ message: err.message })
-      }
+    const {
+      title,
+      description,
+      is_public,
+      file // This should be a base64 encoded file or file data
+    } = req.body
 
-      if (!req.file) {
-        return res.status(400).json({ message: 'No file uploaded' })
-      }
+    if (!title || !file) {
+      return res.status(400).json({ message: 'Title and file are required' })
+    }
 
-      const {
-        title,
-        description,
-        document_type,
-        related_entity_type,
-        related_entity_id,
-        is_public
-      } = req.body
+    // Upload to Cloudinary
+    let uploadResult
+    try {
+      uploadResult = await cloudinary.uploader.upload(file, {
+        folder: 'state-documents',
+        resource_type: 'auto'
+      })
+    } catch (uploadError) {
+      console.error('Cloudinary upload error:', uploadError)
+      return res.status(400).json({ message: 'Failed to upload file' })
+    }
 
-      try {
-        const document = await StateDocument.create({
-          state_committee_id: stateCommittee.id,
-          title,
-          description: description || null,
-          file_name: req.file.originalname,
-          file_path: req.file.path,
-          file_size: req.file.size,
-          file_type: req.file.mimetype,
-          document_type,
-          related_entity_type: related_entity_type || null,
-          related_entity_id: related_entity_id || null,
-          is_public: is_public === 'true',
-          created_by: userId
-        })
+    // Create document record
+    const document = await Document.create({
+      owner_id: userId,
+      title,
+      description: description || null,
+      document_url: uploadResult.secure_url,
+      file_type: uploadResult.format || 'unknown',
+      is_public: is_public === 'true' || is_public === true
+    })
 
-        // Fetch document with user data
-        const documentWithUser = await StateDocument.findByPk(document.id, {
-          include: [
-            {
-              model: User,
-              as: 'created_by_user',
-              attributes: ['id', 'username', 'email']
-            }
-          ]
-        })
-
-        res.status(201).json({
-          document: documentWithUser,
-          message: 'Document uploaded successfully'
-        })
-
-      } catch (dbError) {
-        // Delete uploaded file if database operation fails
-        if (fs.existsSync(req.file.path)) {
-          fs.unlinkSync(req.file.path)
+    // Fetch document with user data
+    const documentWithUser = await Document.findByPk(document.id, {
+      include: [
+        {
+          model: User,
+          as: 'owner',
+          attributes: ['id', 'username', 'email']
         }
-        throw dbError
-      }
+      ]
+    })
+
+    res.status(201).json({
+      document: documentWithUser,
+      message: 'Document uploaded successfully'
     })
 
   } catch (error) {
     console.error('Error uploading document:', error)
-    res.status(500).json({ message: 'Internal server error' })
+    res.status(500).json({ message: 'Failed to upload document' })
   }
 }
 
@@ -311,14 +217,14 @@ const updateStateDocument = async (req, res) => {
     })
     
     if (!stateCommittee) {
-      return res.status(404).json({ message: 'State committee profile not found' })
+      return res.status(404).json({ message: 'State committee not found' })
     }
 
     // Find and update document
-    const document = await StateDocument.findOne({
+    const document = await Document.findOne({
       where: {
         id: documentId,
-        state_committee_id: stateCommittee.id
+        owner_id: userId
       }
     })
 
@@ -329,11 +235,11 @@ const updateStateDocument = async (req, res) => {
     await document.update(updateData)
 
     // Fetch updated document with user data
-    const updatedDocument = await StateDocument.findByPk(document.id, {
+    const updatedDocument = await Document.findByPk(document.id, {
       include: [
         {
           model: User,
-          as: 'created_by_user',
+          as: 'owner',
           attributes: ['id', 'username', 'email']
         }
       ]
@@ -346,7 +252,7 @@ const updateStateDocument = async (req, res) => {
 
   } catch (error) {
     console.error('Error updating document:', error)
-    res.status(500).json({ message: 'Internal server error' })
+    res.status(500).json({ message: 'Failed to update document' })
   }
 }
 
@@ -362,14 +268,14 @@ const deleteStateDocument = async (req, res) => {
     })
     
     if (!stateCommittee) {
-      return res.status(404).json({ message: 'State committee profile not found' })
+      return res.status(404).json({ message: 'State committee not found' })
     }
 
     // Find and delete document
-    const document = await StateDocument.findOne({
+    const document = await Document.findOne({
       where: {
         id: documentId,
-        state_committee_id: stateCommittee.id
+        owner_id: userId
       }
     })
 
@@ -377,9 +283,15 @@ const deleteStateDocument = async (req, res) => {
       return res.status(404).json({ message: 'Document not found' })
     }
 
-    // Delete file from filesystem
-    if (fs.existsSync(document.file_path)) {
-      fs.unlinkSync(document.file_path)
+    // Delete from Cloudinary if it's a Cloudinary URL
+    if (document.document_url && document.document_url.includes('cloudinary.com')) {
+      try {
+        const publicId = document.document_url.split('/').pop().split('.')[0]
+        await cloudinary.uploader.destroy(publicId)
+      } catch (cloudinaryError) {
+        console.error('Cloudinary deletion error:', cloudinaryError)
+        // Continue with database deletion even if Cloudinary fails
+      }
     }
 
     await document.destroy()
@@ -388,197 +300,44 @@ const deleteStateDocument = async (req, res) => {
 
   } catch (error) {
     console.error('Error deleting document:', error)
-    res.status(500).json({ message: 'Internal server error' })
+    res.status(500).json({ message: 'Failed to delete document' })
   }
 }
 
-// Create invoice
-const createStateInvoice = async (req, res) => {
+// Download document
+const downloadStateDocument = async (req, res) => {
   try {
+    const { documentId } = req.params
     const userId = req.user.id
-    const {
-      invoice_type,
-      recipient_type,
-      recipient_id,
-      recipient_name,
-      amount,
-      tax_amount,
-      due_date,
-      description
-    } = req.body
     
-    // Get state committee profile
-    const stateCommittee = await StateCommittee.findOne({
-      where: { user_id: userId }
-    })
-    
-    if (!stateCommittee) {
-      return res.status(404).json({ message: 'State committee profile not found' })
-    }
-
-    // Generate invoice number
-    const invoiceCount = await StateInvoice.count({
-      where: { state_committee_id: stateCommittee.id }
-    })
-    
-    const invoiceNumber = `INV-${stateCommittee.state_code}-${Date.now()}-${(invoiceCount + 1).toString().padStart(3, '0')}`
-
-    const totalAmount = parseFloat(amount) + (parseFloat(tax_amount) || 0)
-
-    const invoice = await StateInvoice.create({
-      state_committee_id: stateCommittee.id,
-      invoice_number: invoiceNumber,
-      invoice_type,
-      recipient_type,
-      recipient_id: parseInt(recipient_id),
-      recipient_name,
-      amount: parseFloat(amount),
-      tax_amount: tax_amount ? parseFloat(tax_amount) : null,
-      total_amount: totalAmount,
-      due_date: new Date(due_date),
-      status: 'draft',
-      description: description || null
-    })
-
-    res.status(201).json({
-      invoice,
-      message: 'Invoice created successfully'
-    })
-
-  } catch (error) {
-    console.error('Error creating invoice:', error)
-    res.status(500).json({ message: 'Internal server error' })
-  }
-}
-
-// Update invoice
-const updateStateInvoice = async (req, res) => {
-  try {
-    const { invoiceId } = req.params
-    const userId = req.user.id
-    const updateData = req.body
-    
-    // Get state committee profile
-    const stateCommittee = await StateCommittee.findOne({
-      where: { user_id: userId }
-    })
-    
-    if (!stateCommittee) {
-      return res.status(404).json({ message: 'State committee profile not found' })
-    }
-
-    // Find and update invoice
-    const invoice = await StateInvoice.findOne({
+    // Find document
+    const document = await Document.findOne({
       where: {
-        id: invoiceId,
-        state_committee_id: stateCommittee.id
+        id: documentId,
+        [Op.or]: [
+          { owner_id: userId },
+          { is_public: true }
+        ]
       }
     })
 
-    if (!invoice) {
-      return res.status(404).json({ message: 'Invoice not found' })
+    if (!document) {
+      return res.status(404).json({ message: 'Document not found or access denied' })
     }
 
-    // Recalculate total if amount or tax changes
-    if (updateData.amount !== undefined || updateData.tax_amount !== undefined) {
-      const amount = updateData.amount !== undefined ? parseFloat(updateData.amount) : invoice.amount
-      const taxAmount = updateData.tax_amount !== undefined ? parseFloat(updateData.tax_amount) || 0 : (invoice.tax_amount || 0)
-      updateData.total_amount = amount + taxAmount
-    }
-
-    await invoice.update(updateData)
-
-    res.json({
-      invoice,
-      message: 'Invoice updated successfully'
-    })
+    // Redirect to the document URL for download
+    res.redirect(document.document_url)
 
   } catch (error) {
-    console.error('Error updating invoice:', error)
-    res.status(500).json({ message: 'Internal server error' })
-  }
-}
-
-// Delete invoice
-const deleteStateInvoice = async (req, res) => {
-  try {
-    const { invoiceId } = req.params
-    const userId = req.user.id
-    
-    // Get state committee profile
-    const stateCommittee = await StateCommittee.findOne({
-      where: { user_id: userId }
-    })
-    
-    if (!stateCommittee) {
-      return res.status(404).json({ message: 'State committee profile not found' })
-    }
-
-    // Find and delete invoice
-    const invoice = await StateInvoice.findOne({
-      where: {
-        id: invoiceId,
-        state_committee_id: stateCommittee.id
-      }
-    })
-
-    if (!invoice) {
-      return res.status(404).json({ message: 'Invoice not found' })
-    }
-
-    await invoice.destroy()
-
-    res.json({ message: 'Invoice deleted successfully' })
-
-  } catch (error) {
-    console.error('Error deleting invoice:', error)
-    res.status(500).json({ message: 'Internal server error' })
-  }
-}
-
-// Create document template
-const createDocumentTemplate = async (req, res) => {
-  try {
-    const userId = req.user.id
-    const { name, description, template_type, template_content, variables } = req.body
-    
-    // Get state committee profile
-    const stateCommittee = await StateCommittee.findOne({
-      where: { user_id: userId }
-    })
-    
-    if (!stateCommittee) {
-      return res.status(404).json({ message: 'State committee profile not found' })
-    }
-
-    const template = await StateDocumentTemplate.create({
-      state_committee_id: stateCommittee.id,
-      name,
-      description: description || null,
-      template_type,
-      template_content,
-      variables: JSON.stringify(variables || []),
-      is_active: true
-    })
-
-    res.status(201).json({
-      template,
-      message: 'Document template created successfully'
-    })
-
-  } catch (error) {
-    console.error('Error creating document template:', error)
-    res.status(500).json({ message: 'Internal server error' })
+    console.error('Error downloading document:', error)
+    res.status(500).json({ message: 'Failed to download document' })
   }
 }
 
 module.exports = {
-  getStateDocumentsData,
+  getStateDocuments,
   uploadStateDocument,
   updateStateDocument,
   deleteStateDocument,
-  createStateInvoice,
-  updateStateInvoice,
-  deleteStateInvoice,
-  createDocumentTemplate
+  downloadStateDocument
 }

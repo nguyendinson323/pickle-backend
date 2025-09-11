@@ -1,4 +1,15 @@
-const { StateCommittee, User, Message, Player, Club, Partner, Coach, MessageTemplate } = require('../db/models')
+const { 
+  StateCommittee, 
+  User, 
+  Message, 
+  MessageRecipient, 
+  MessageAttachment,
+  MessageTemplate,
+  Player, 
+  Club, 
+  Partner, 
+  Coach 
+} = require('../db/models')
 const { Op, Sequelize } = require('sequelize')
 
 // Get state inbox data (received and sent messages)
@@ -12,34 +23,68 @@ const getStateInboxData = async (req, res) => {
     })
     
     if (!stateCommittee) {
-      return res.status(404).json({ message: 'State committee profile not found' })
+      return res.status(404).json({ message: 'State committee not found' })
     }
 
-    // Get received messages
-    const messages = await Message.findAll({
-      where: { 
-        recipient_id: userId,
-        recipient_type: 'direct'
-      },
+    // Get received messages through message_recipients table
+    const receivedMessageRecipients = await MessageRecipient.findAll({
+      where: { recipient_id: userId },
       include: [
         {
-          model: User,
-          as: 'sender',
-          attributes: ['id', 'username', 'email', 'role']
+          model: Message,
+          as: 'message',
+          include: [
+            {
+              model: User,
+              as: 'sender',
+              attributes: ['id', 'username', 'email', 'role']
+            },
+            {
+              model: MessageAttachment,
+              as: 'attachments',
+              required: false
+            }
+          ]
         }
       ],
-      order: [['sent_at', 'DESC']],
+      order: [['message', 'sent_at', 'DESC']],
       limit: 100
     })
 
-    // Get sent messages and announcements
+    // Transform to messages with recipient info
+    const messages = receivedMessageRecipients.map(recipient => ({
+      ...recipient.message.dataValues,
+      is_read: recipient.is_read,
+      read_at: recipient.read_at,
+      recipient_info: {
+        is_read: recipient.is_read,
+        read_at: recipient.read_at
+      }
+    }))
+
+    // Get sent messages
     const sentMessages = await Message.findAll({
       where: { sender_id: userId },
       include: [
         {
           model: User,
-          as: 'recipient',
-          attributes: ['id', 'username', 'email', 'role'],
+          as: 'sender',
+          attributes: ['id', 'username', 'email', 'role']
+        },
+        {
+          model: MessageRecipient,
+          as: 'recipients',
+          include: [
+            {
+              model: User,
+              as: 'recipient',
+              attributes: ['id', 'username', 'email', 'role']
+            }
+          ]
+        },
+        {
+          model: MessageAttachment,
+          as: 'attachments',
           required: false
         }
       ],
@@ -50,32 +95,28 @@ const getStateInboxData = async (req, res) => {
     // Calculate statistics
     const totalMessages = messages.length
     const unreadMessages = messages.filter(m => !m.is_read).length
-    const announcementsSent = sentMessages.filter(m => m.is_announcement).length
+    const announcementsSent = sentMessages.filter(m => m.message_type === 'announcement').length
     
-    // Calculate total recipients reached (simplified)
+    // Calculate total recipients reached
     const totalRecipientsReached = sentMessages.reduce((sum, message) => {
-      if (message.recipient_type === 'group' || message.is_announcement) {
-        return sum + 10 // Estimated recipients per announcement
-      }
-      return sum + 1
+      return sum + (message.recipients ? message.recipients.length : 0)
     }, 0)
 
     // Recent activity (messages in last 7 days)
     const sevenDaysAgo = new Date()
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
     
-    const recentActivity = await Message.count({
+    const recentSentCount = await Message.count({
       where: {
-        [Op.or]: [
-          { sender_id: userId },
-          { 
-            recipient_id: userId,
-            recipient_type: 'direct'
-          }
-        ],
-        sent_at: {
-          [Op.gte]: sevenDaysAgo
-        }
+        sender_id: userId,
+        sent_at: { [Op.gte]: sevenDaysAgo }
+      }
+    })
+
+    const recentReceivedCount = await MessageRecipient.count({
+      where: {
+        recipient_id: userId,
+        created_at: { [Op.gte]: sevenDaysAgo }
       }
     })
 
@@ -84,7 +125,7 @@ const getStateInboxData = async (req, res) => {
       unread_messages: unreadMessages,
       announcements_sent: announcementsSent,
       total_recipients_reached: totalRecipientsReached,
-      recent_activity: recentActivity
+      recent_activity: recentSentCount + recentReceivedCount
     }
 
     res.json({
@@ -95,7 +136,7 @@ const getStateInboxData = async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching state inbox data:', error)
-    res.status(500).json({ message: 'Internal server error' })
+    res.status(500).json({ message: 'Failed to fetch inbox data' })
   }
 }
 
@@ -111,7 +152,7 @@ const getStateRecipients = async (req, res) => {
     })
     
     if (!stateCommittee) {
-      return res.status(404).json({ message: 'State committee profile not found' })
+      return res.status(404).json({ message: 'State committee not found' })
     }
 
     const stateId = stateCommittee.state_id
@@ -221,7 +262,7 @@ const getStateRecipients = async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching state recipients:', error)
-    res.status(500).json({ message: 'Internal server error' })
+    res.status(500).json({ message: 'Failed to fetch recipients' })
   }
 }
 
@@ -229,7 +270,7 @@ const getStateRecipients = async (req, res) => {
 const sendStateMessage = async (req, res) => {
   try {
     const userId = req.user.id
-    const { subject, message, recipient_type, recipient_ids, is_announcement, schedule_at } = req.body
+    const { subject, content, recipient_ids, message_type = 'direct' } = req.body
     
     // Get state committee profile
     const stateCommittee = await StateCommittee.findOne({
@@ -237,48 +278,65 @@ const sendStateMessage = async (req, res) => {
     })
     
     if (!stateCommittee) {
-      return res.status(404).json({ message: 'State committee profile not found' })
+      return res.status(404).json({ message: 'State committee not found' })
     }
 
-    // If single recipient (direct message)
-    if (recipient_type === 'direct' && recipient_ids && recipient_ids.length === 1) {
-      const sentMessage = await Message.create({
-        sender_id: userId,
-        recipient_id: recipient_ids[0],
-        recipient_type: 'direct',
-        subject,
-        message,
-        is_announcement: is_announcement || false,
-        sent_at: schedule_at ? new Date(schedule_at) : new Date()
-      })
-
-      // Fetch created message with relations
-      const messageWithRelations = await Message.findByPk(sentMessage.id, {
-        include: [
-          {
-            model: User,
-            as: 'sender',
-            attributes: ['id', 'username', 'email', 'role']
-          },
-          {
-            model: User,
-            as: 'recipient',
-            attributes: ['id', 'username', 'email', 'role']
-          }
-        ]
-      })
-
-      res.status(201).json({
-        message: messageWithRelations,
-        success: true
-      })
-    } else {
-      return res.status(400).json({ message: 'Invalid recipient configuration' })
+    if (!recipient_ids || recipient_ids.length === 0) {
+      return res.status(400).json({ message: 'At least one recipient is required' })
     }
+
+    // Create the message
+    const message = await Message.create({
+      sender_id: userId,
+      subject,
+      content,
+      message_type,
+      sent_at: new Date(),
+      has_attachments: false
+    })
+
+    // Create message recipients
+    const messageRecipients = await Promise.all(
+      recipient_ids.map(recipientId => 
+        MessageRecipient.create({
+          message_id: message.id,
+          recipient_id: recipientId,
+          is_read: false
+        })
+      )
+    )
+
+    // Fetch created message with relations
+    const messageWithRelations = await Message.findByPk(message.id, {
+      include: [
+        {
+          model: User,
+          as: 'sender',
+          attributes: ['id', 'username', 'email', 'role']
+        },
+        {
+          model: MessageRecipient,
+          as: 'recipients',
+          include: [
+            {
+              model: User,
+              as: 'recipient',
+              attributes: ['id', 'username', 'email', 'role']
+            }
+          ]
+        }
+      ]
+    })
+
+    res.status(201).json({
+      message: messageWithRelations,
+      recipients_count: recipient_ids.length,
+      success: true
+    })
 
   } catch (error) {
     console.error('Error sending state message:', error)
-    res.status(500).json({ message: 'Internal server error' })
+    res.status(500).json({ message: 'Failed to send message' })
   }
 }
 
@@ -286,7 +344,7 @@ const sendStateMessage = async (req, res) => {
 const sendBulkAnnouncement = async (req, res) => {
   try {
     const userId = req.user.id
-    const { subject, message, target_groups, recipient_ids, schedule_at } = req.body
+    const { subject, content, target_groups, recipient_ids } = req.body
     
     // Get state committee profile
     const stateCommittee = await StateCommittee.findOne({
@@ -294,66 +352,44 @@ const sendBulkAnnouncement = async (req, res) => {
     })
     
     if (!stateCommittee) {
-      return res.status(404).json({ message: 'State committee profile not found' })
+      return res.status(404).json({ message: 'State committee not found' })
     }
 
     let allRecipients = []
 
     // Get recipients based on target groups
-    if (target_groups.includes('players')) {
-      const players = await Player.findAll({
-        where: { state_id: stateCommittee.state_id },
-        include: [
-          {
-            model: User,
-            as: 'user',
-            attributes: ['id']
-          }
-        ]
-      })
-      allRecipients = [...allRecipients, ...players.map(p => p.user.id)]
-    }
+    if (target_groups && target_groups.length > 0) {
+      if (target_groups.includes('players')) {
+        const players = await Player.findAll({
+          where: { state_id: stateCommittee.state_id },
+          include: [{ model: User, as: 'user', attributes: ['id'] }]
+        })
+        allRecipients = [...allRecipients, ...players.map(p => p.user.id)]
+      }
 
-    if (target_groups.includes('clubs')) {
-      const clubs = await Club.findAll({
-        where: { state_id: stateCommittee.state_id },
-        include: [
-          {
-            model: User,
-            as: 'user',
-            attributes: ['id']
-          }
-        ]
-      })
-      allRecipients = [...allRecipients, ...clubs.map(c => c.user.id)]
-    }
+      if (target_groups.includes('clubs')) {
+        const clubs = await Club.findAll({
+          where: { state_id: stateCommittee.state_id },
+          include: [{ model: User, as: 'user', attributes: ['id'] }]
+        })
+        allRecipients = [...allRecipients, ...clubs.map(c => c.user.id)]
+      }
 
-    if (target_groups.includes('partners')) {
-      const partners = await Partner.findAll({
-        where: { state_id: stateCommittee.state_id },
-        include: [
-          {
-            model: User,
-            as: 'user',
-            attributes: ['id']
-          }
-        ]
-      })
-      allRecipients = [...allRecipients, ...partners.map(p => p.user.id)]
-    }
+      if (target_groups.includes('partners')) {
+        const partners = await Partner.findAll({
+          where: { state_id: stateCommittee.state_id },
+          include: [{ model: User, as: 'user', attributes: ['id'] }]
+        })
+        allRecipients = [...allRecipients, ...partners.map(p => p.user.id)]
+      }
 
-    if (target_groups.includes('coaches')) {
-      const coaches = await Coach.findAll({
-        where: { state_id: stateCommittee.state_id },
-        include: [
-          {
-            model: User,
-            as: 'user',
-            attributes: ['id']
-          }
-        ]
-      })
-      allRecipients = [...allRecipients, ...coaches.map(c => c.user.id)]
+      if (target_groups.includes('coaches')) {
+        const coaches = await Coach.findAll({
+          where: { state_id: stateCommittee.state_id },
+          include: [{ model: User, as: 'user', attributes: ['id'] }]
+        })
+        allRecipients = [...allRecipients, ...coaches.map(c => c.user.id)]
+      }
     }
 
     // If specific recipient IDs provided, use those instead
@@ -364,33 +400,30 @@ const sendBulkAnnouncement = async (req, res) => {
     // Remove duplicates
     allRecipients = [...new Set(allRecipients)]
 
-    // Create announcement messages for each recipient
-    const sentDate = schedule_at ? new Date(schedule_at) : new Date()
-    const messages = []
-
-    for (const recipientId of allRecipients) {
-      const sentMessage = await Message.create({
-        sender_id: userId,
-        recipient_id: recipientId,
-        recipient_type: 'group',
-        subject,
-        message,
-        is_announcement: true,
-        sent_at: sentDate
-      })
-      messages.push(sentMessage)
+    if (allRecipients.length === 0) {
+      return res.status(400).json({ message: 'No recipients found' })
     }
 
-    // Create a summary announcement record
+    // Create the announcement message
     const announcement = await Message.create({
       sender_id: userId,
-      recipient_id: null,
-      recipient_type: 'group',
-      subject: `[ANNOUNCEMENT] ${subject}`,
-      message: `Sent to ${allRecipients.length} recipients: ${message}`,
-      is_announcement: true,
-      sent_at: sentDate
+      subject,
+      content,
+      message_type: 'announcement',
+      sent_at: new Date(),
+      has_attachments: false
     })
+
+    // Create message recipients for all recipients
+    await Promise.all(
+      allRecipients.map(recipientId => 
+        MessageRecipient.create({
+          message_id: announcement.id,
+          recipient_id: recipientId,
+          is_read: false
+        })
+      )
+    )
 
     // Fetch announcement with relations
     const announcementWithRelations = await Message.findByPk(announcement.id, {
@@ -399,16 +432,20 @@ const sendBulkAnnouncement = async (req, res) => {
           model: User,
           as: 'sender',
           attributes: ['id', 'username', 'email', 'role']
+        },
+        {
+          model: MessageRecipient,
+          as: 'recipients',
+          include: [
+            {
+              model: User,
+              as: 'recipient',
+              attributes: ['id', 'username', 'email', 'role']
+            }
+          ]
         }
       ]
     })
-
-    // Add announcement stats
-    announcementWithRelations.dataValues.announcement_stats = {
-      total_recipients: allRecipients.length,
-      delivered: allRecipients.length,
-      read: 0
-    }
 
     res.status(201).json({
       announcement: announcementWithRelations,
@@ -418,7 +455,7 @@ const sendBulkAnnouncement = async (req, res) => {
 
   } catch (error) {
     console.error('Error sending bulk announcement:', error)
-    res.status(500).json({ message: 'Internal server error' })
+    res.status(500).json({ message: 'Failed to send announcement' })
   }
 }
 
@@ -428,27 +465,27 @@ const markMessageAsRead = async (req, res) => {
     const { messageId } = req.params
     const userId = req.user.id
 
-    const message = await Message.findOne({
+    const messageRecipient = await MessageRecipient.findOne({
       where: {
-        id: messageId,
+        message_id: messageId,
         recipient_id: userId
       }
     })
 
-    if (!message) {
+    if (!messageRecipient) {
       return res.status(404).json({ message: 'Message not found' })
     }
 
-    await message.update({
+    await messageRecipient.update({
       is_read: true,
       read_at: new Date()
     })
 
-    res.json({ message: 'Message marked as read' })
+    res.json({ message: 'Message marked as read', success: true })
 
   } catch (error) {
     console.error('Error marking message as read:', error)
-    res.status(500).json({ message: 'Internal server error' })
+    res.status(500).json({ message: 'Failed to mark message as read' })
   }
 }
 
@@ -458,27 +495,45 @@ const deleteMessage = async (req, res) => {
     const { messageId } = req.params
     const userId = req.user.id
 
+    // Check if user is sender or recipient
     const message = await Message.findOne({
-      where: {
-        id: messageId,
-        [Op.or]: [
-          { sender_id: userId },
-          { recipient_id: userId }
-        ]
-      }
+      where: { id: messageId },
+      include: [
+        {
+          model: MessageRecipient,
+          as: 'recipients',
+          where: { recipient_id: userId },
+          required: false
+        }
+      ]
     })
 
     if (!message) {
       return res.status(404).json({ message: 'Message not found' })
     }
 
-    await message.destroy()
-
-    res.json({ message: 'Message deleted successfully' })
+    // If user is sender, delete the entire message
+    if (message.sender_id === userId) {
+      await message.destroy()
+      res.json({ message: 'Message deleted successfully', success: true })
+    } 
+    // If user is recipient, only delete their recipient record
+    else if (message.recipients && message.recipients.length > 0) {
+      await MessageRecipient.destroy({
+        where: {
+          message_id: messageId,
+          recipient_id: userId
+        }
+      })
+      res.json({ message: 'Message removed from inbox', success: true })
+    } 
+    else {
+      return res.status(403).json({ message: 'Not authorized to delete this message' })
+    }
 
   } catch (error) {
     console.error('Error deleting message:', error)
-    res.status(500).json({ message: 'Internal server error' })
+    res.status(500).json({ message: 'Failed to delete message' })
   }
 }
 
@@ -493,12 +548,13 @@ const getMessageTemplates = async (req, res) => {
     })
 
     res.json({
-      templates
+      templates,
+      success: true
     })
 
   } catch (error) {
     console.error('Error fetching message templates:', error)
-    res.status(500).json({ message: 'Internal server error' })
+    res.status(500).json({ message: 'Failed to fetch templates' })
   }
 }
 
@@ -518,12 +574,13 @@ const createMessageTemplate = async (req, res) => {
 
     res.status(201).json({
       template,
-      message: 'Template created successfully'
+      message: 'Template created successfully',
+      success: true
     })
 
   } catch (error) {
     console.error('Error creating message template:', error)
-    res.status(500).json({ message: 'Internal server error' })
+    res.status(500).json({ message: 'Failed to create template' })
   }
 }
 
@@ -549,12 +606,13 @@ const updateMessageTemplate = async (req, res) => {
 
     res.json({
       template,
-      message: 'Template updated successfully'
+      message: 'Template updated successfully',
+      success: true
     })
 
   } catch (error) {
     console.error('Error updating message template:', error)
-    res.status(500).json({ message: 'Internal server error' })
+    res.status(500).json({ message: 'Failed to update template' })
   }
 }
 
@@ -577,11 +635,14 @@ const deleteMessageTemplate = async (req, res) => {
 
     await template.destroy()
 
-    res.json({ message: 'Template deleted successfully' })
+    res.json({ 
+      message: 'Template deleted successfully',
+      success: true 
+    })
 
   } catch (error) {
     console.error('Error deleting message template:', error)
-    res.status(500).json({ message: 'Internal server error' })
+    res.status(500).json({ message: 'Failed to delete template' })
   }
 }
 
