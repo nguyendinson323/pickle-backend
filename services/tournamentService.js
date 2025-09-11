@@ -48,7 +48,7 @@ const getTournament = async (tournamentId) => {
   })
 
   return {
-    tournament,
+    ...tournament.toJSON(),
     totalRegistrations: registrations
   }
 }
@@ -58,6 +58,8 @@ const getAllTournaments = async (filters = {}) => {
     state_id, 
     organizer_type, 
     status, 
+    tournament_type,
+    search,
     start_date, 
     end_date,
     limit = 50, 
@@ -69,6 +71,15 @@ const getAllTournaments = async (filters = {}) => {
   if (state_id) where.state_id = state_id
   if (organizer_type) where.organizer_type = organizer_type
   if (status) where.status = status
+  if (tournament_type) where.tournament_type = tournament_type
+  
+  if (search) {
+    where[Op.or] = [
+      { name: { [Op.iLike]: `%${search}%` } },
+      { description: { [Op.iLike]: `%${search}%` } },
+      { venue_name: { [Op.iLike]: `%${search}%` } }
+    ]
+  }
   
   if (start_date && end_date) {
     where.start_date = {
@@ -91,7 +102,24 @@ const getAllTournaments = async (filters = {}) => {
     order: [['start_date', 'DESC']]
   })
 
-  return tournaments
+  // Add totalRegistrations for each tournament
+  const tournamentsWithRegistrations = await Promise.all(
+    tournaments.rows.map(async (tournament) => {
+      const registrations = await TournamentRegistration.count({
+        where: { tournament_id: tournament.id }
+      })
+      
+      return {
+        ...tournament.toJSON(),
+        totalRegistrations: registrations
+      }
+    })
+  )
+
+  return {
+    count: tournaments.count,
+    rows: tournamentsWithRegistrations
+  }
 }
 
 const registerForTournament = async (tournamentId, categoryId, playerId, partnerPlayerId = null) => {
@@ -213,15 +241,28 @@ const getTournamentRegistrations = async (tournamentId, categoryId = null) => {
 
   const registrations = await TournamentRegistration.findAll({
     where,
-    include: [
-      { model: Player, as: 'player' },
-      { model: Player, as: 'partner' },
-      { model: TournamentCategory, as: 'category' }
-    ],
     order: [['created_at', 'ASC']]
   })
 
-  return registrations
+  // Manually fetch related data to avoid association conflicts
+  const enrichedRegistrations = await Promise.all(
+    registrations.map(async (registration) => {
+      const [player, partnerPlayer, category] = await Promise.all([
+        Player.findByPk(registration.player_id),
+        registration.partner_player_id ? Player.findByPk(registration.partner_player_id) : null,
+        TournamentCategory.findByPk(registration.category_id)
+      ])
+
+      return {
+        ...registration.toJSON(),
+        player,
+        partnerPlayer,
+        category
+      }
+    })
+  )
+
+  return enrichedRegistrations
 }
 
 const createMatch = async (matchData) => {
