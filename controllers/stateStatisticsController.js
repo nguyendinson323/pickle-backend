@@ -457,16 +457,102 @@ const exportStatisticsReport = async (req, res) => {
       return res.status(404).json({ message: 'State committee profile not found' })
     }
 
-    // For now, return a simple response - would implement actual PDF/Excel generation
-    res.json({
-      message: 'Export functionality would be implemented here',
-      parameters: {
-        start_date,
-        end_date,
-        format,
-        state: stateCommittee.state_name
+    // Get the statistics data for export
+    const startDate = start_date ? new Date(start_date) : new Date(new Date().getFullYear(), 0, 1)
+    const endDate = end_date ? new Date(end_date) : new Date()
+    const stateId = stateCommittee.id
+
+    // Get basic statistics for export
+    const totalTournaments = await Tournament.count({
+      where: { 
+        organizer_type: 'state',
+        organizer_id: stateId,
+        created_at: { [Op.between]: [startDate, endDate] }
       }
     })
+
+    const totalPlayers = await Player.count({
+      where: { state_id: stateId }
+    })
+
+    const totalCourts = await Court.count({
+      include: [
+        {
+          model: Club,
+          as: 'club',
+          where: { state_id: stateId },
+          required: true
+        }
+      ]
+    })
+
+    const totalClubs = await Club.count({
+      where: { state_id: stateId, is_active: true }
+    })
+
+    // Create export data
+    const exportData = {
+      reportTitle: `${stateCommittee.state_name} Pickleball Statistics Report`,
+      dateRange: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`,
+      generatedAt: new Date().toISOString().split('T')[0],
+      keyMetrics: {
+        totalPlayers,
+        totalTournaments,
+        totalCourts,
+        totalClubs
+      },
+      summary: `This report covers the period from ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()} for ${stateCommittee.state_name} state pickleball activities.`
+    }
+
+    if (format === 'pdf') {
+      // Generate PDF report content
+      const pdfContent = `
+${exportData.reportTitle}
+Generated: ${exportData.generatedAt}
+Period: ${exportData.dateRange}
+
+SUMMARY METRICS
+===============
+Total Players: ${exportData.keyMetrics.totalPlayers}
+Total Tournaments: ${exportData.keyMetrics.totalTournaments}
+Total Courts: ${exportData.keyMetrics.totalCourts}
+Total Clubs: ${exportData.keyMetrics.totalClubs}
+
+${exportData.summary}
+
+Note: This is a simplified text-based export. For production, integrate with a PDF generation library like puppeteer or jsPDF.
+      `
+      
+      res.setHeader('Content-Type', 'application/pdf')
+      res.setHeader('Content-Disposition', `attachment; filename="state-statistics-${start_date}-to-${end_date}.pdf"`)
+      res.send(Buffer.from(pdfContent, 'utf-8'))
+      
+    } else if (format === 'excel') {
+      // Generate Excel-compatible CSV content
+      const csvContent = `State Pickleball Statistics Report
+State,${stateCommittee.state_name}
+Report Period,${exportData.dateRange}
+Generated Date,${exportData.generatedAt}
+
+Metric,Value
+Total Players,${exportData.keyMetrics.totalPlayers}
+Total Tournaments,${exportData.keyMetrics.totalTournaments}
+Total Courts,${exportData.keyMetrics.totalCourts}
+Total Clubs,${exportData.keyMetrics.totalClubs}
+
+Summary
+"${exportData.summary}"
+
+Note: This is a simplified CSV export. For production Excel files (.xlsx), integrate with a library like ExcelJS.
+      `
+      
+      res.setHeader('Content-Type', 'application/vnd.ms-excel')
+      res.setHeader('Content-Disposition', `attachment; filename="state-statistics-${start_date}-to-${end_date}.xlsx"`)
+      res.send(Buffer.from(csvContent, 'utf-8'))
+      
+    } else {
+      return res.status(400).json({ message: 'Invalid export format. Use "pdf" or "excel".' })
+    }
 
   } catch (error) {
     console.error('Error exporting statistics report:', error)

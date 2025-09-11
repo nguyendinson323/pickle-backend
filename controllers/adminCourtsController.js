@@ -28,38 +28,29 @@ const getCourts = async (req, res) => {
     }
 
     if (lighting !== undefined && lighting !== '') {
-      whereConditions.lighting = lighting === 'true'
+      whereConditions.lights = lighting === 'true'
     }
 
     if (indoor !== undefined && indoor !== '') {
       whereConditions.indoor = indoor === 'true'
     }
 
-    if (minRate) {
-      whereConditions.hourly_rate = { [Op.gte]: parseFloat(minRate) }
-    }
-
-    if (maxRate) {
-      if (whereConditions.hourly_rate) {
-        whereConditions.hourly_rate[Op.lte] = parseFloat(maxRate)
-      } else {
-        whereConditions.hourly_rate = { [Op.lte]: parseFloat(maxRate) }
-      }
-    }
+    // Note: hourly_rate filtering removed as it doesn't exist in courts table
+    // This would need to be implemented via court_schedules or a separate rates table
 
     if (searchTerm) {
       whereConditions[Op.or] = [
         { name: { [Op.iLike]: `%${searchTerm}%` } },
-        { '$location.address$': { [Op.iLike]: `%${searchTerm}%` } },
-        { '$location.city$': { [Op.iLike]: `%${searchTerm}%` } }
+        { address: { [Op.iLike]: `%${searchTerm}%` } }
       ]
     }
 
     if (location) {
-      whereConditions[Op.or] = [
-        { '$location.city$': { [Op.iLike]: `%${location}%` } },
-        { '$location.state$': { [Op.iLike]: `%${location}%` } }
-      ]
+      if (whereConditions[Op.or]) {
+        whereConditions[Op.or].push({ address: { [Op.iLike]: `%${location}%` } })
+      } else {
+        whereConditions.address = { [Op.iLike]: `%${location}%` }
+      }
     }
 
     // Fetch courts with associations based on owner_type and owner_id
@@ -265,20 +256,13 @@ const getCourtReservations = async (req, res) => {
 const getCourtDetails = async (req, res) => {
   try {
     const { id } = req.params
-
+    
+    // Get court with state information (same as getCourts pattern)
     const court = await Court.findByPk(id, {
       include: [
         {
-          model: Club,
-          as: 'Club',
-          attributes: ['id', 'business_name', 'manager_name'],
-          required: false
-        },
-        {
-          model: Partner,
-          as: 'Partner',
-          attributes: ['id', 'business_name', 'contact_name'],
-          required: false
+          model: State,
+          attributes: ['id', 'name', 'short_code']
         }
       ]
     })
@@ -287,48 +271,65 @@ const getCourtDetails = async (req, res) => {
       return res.status(404).json({ message: 'Court not found' })
     }
 
+    // Get owner details based on owner_type (same as getCourts pattern)
+    let ownerDetails = null
+    let ownerName = null
+    
+    if (court.owner_type === 'club' && court.owner_id) {
+      const club = await Club.findByPk(court.owner_id, {
+        attributes: ['id', 'name', 'manager_name']
+      })
+      ownerDetails = club
+      ownerName = club?.name
+    } else if (court.owner_type === 'partner' && court.owner_id) {
+      const partner = await Partner.findByPk(court.owner_id, {
+        attributes: ['id', 'business_name', 'contact_name']
+      })
+      ownerDetails = partner
+      ownerName = partner?.business_name
+    }
+
     // Get recent reservations for this court
     const recentReservations = await CourtReservation.findAll({
       where: { court_id: id },
-      include: [
-        {
-          model: User,
-          attributes: ['username', 'role']
-        }
-      ],
       order: [['start_time', 'DESC']],
       limit: 10
     })
 
+    // Calculate reservation stats
+    const totalReservations = await CourtReservation.count({
+      where: { court_id: id }
+    })
+
+    const revenueResult = await CourtReservation.sum('amount', {
+      where: { court_id: id, payment_status: 'paid' }
+    })
+
+    // Return the same structure as getCourts with additional details
     const courtDetails = {
       id: court.id,
       name: court.name,
-      club_id: court.club_id,
-      club_name: court.Club?.business_name || null,
-      partner_id: court.partner_id,
-      partner_name: court.Partner?.business_name || null,
+      owner_type: court.owner_type,
+      owner_id: court.owner_id,
+      owner_name: ownerName,
+      owner_details: ownerDetails,
+      address: court.address,
+      state_id: court.state_id,
+      state_name: court.state?.name,
+      court_count: court.court_count,
       surface_type: court.surface_type,
-      lighting: court.lighting,
       indoor: court.indoor,
+      lights: court.lights,
+      amenities: court.amenities,
+      description: court.description,
+      latitude: court.latitude,
+      longitude: court.longitude,
       status: court.status,
-      hourly_rate: court.hourly_rate,
-      location: {
-        address: court.address,
-        city: court.city,
-        state: court.state,
-        latitude: court.latitude,
-        longitude: court.longitude
-      },
-      total_reservations: recentReservations.length,
-      revenue_generated: recentReservations.reduce((sum, res) => sum + (res.amount_paid || 0), 0),
-      recent_reservations: recentReservations.map(res => ({
-        id: res.id,
-        user_name: res.User.username,
-        start_time: res.start_time,
-        end_time: res.end_time,
-        status: res.status,
-        amount_paid: res.amount_paid
-      }))
+      created_at: court.created_at,
+      updated_at: court.updated_at,
+      recent_reservations: recentReservations,
+      total_reservations: totalReservations || 0,
+      revenue_generated: revenueResult || 0
     }
 
     res.json(courtDetails)
@@ -344,7 +345,7 @@ const updateCourtStatus = async (req, res) => {
     const { id } = req.params
     const { status, reason } = req.body
 
-    if (!['available', 'occupied', 'maintenance'].includes(status)) {
+    if (!['active', 'maintenance', 'inactive'].includes(status)) {
       return res.status(400).json({ message: 'Invalid status' })
     }
 
@@ -385,10 +386,8 @@ const approveCourt = async (req, res) => {
     }
 
     await court.update({
-      status: 'available',
-      is_approved: true,
-      approved_at: new Date(),
-      approved_by: req.user.id
+      status: 'active',
+      updated_at: new Date()
     })
 
     res.json({
@@ -421,11 +420,8 @@ const rejectCourt = async (req, res) => {
     }
 
     await court.update({
-      status: 'maintenance',
-      is_approved: false,
-      rejection_reason: reason,
-      rejected_at: new Date(),
-      rejected_by: req.user.id
+      status: 'inactive',
+      updated_at: new Date()
     })
 
     res.json({
@@ -444,7 +440,7 @@ const updateReservationStatus = async (req, res) => {
     const { id } = req.params
     const { status, reason } = req.body
 
-    if (!['active', 'completed', 'cancelled', 'no_show'].includes(status)) {
+    if (!['pending', 'confirmed', 'cancelled', 'completed', 'no_show'].includes(status)) {
       return res.status(400).json({ message: 'Invalid reservation status' })
     }
 

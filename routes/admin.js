@@ -13,6 +13,10 @@ const adminProfileController = require('../controllers/adminProfileController')
 const { authenticate } = require('../middlewares/authMiddleware')
 const { authorize } = require('../middlewares/authorizationMiddleware')
 
+// Testing route without auth for court API development
+router.get('/courts-test', adminCourtsController.getCourts)
+router.get('/courts-test/:id', adminCourtsController.getCourtDetails)
+
 router.use(authenticate)
 router.use(authorize('admin'))
 

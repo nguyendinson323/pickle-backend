@@ -81,10 +81,7 @@ const getUpcomingTournaments = async (limit = 6) => {
   try {
     const tournaments = await Tournament.findAll({
       where: {
-        status: ['upcoming', 'ongoing'],
-        start_date: {
-          [Op.gte]: new Date()
-        }
+        status: ['upcoming', 'ongoing']
       },
       include: [
         {
@@ -105,7 +102,7 @@ const getUpcomingTournaments = async (limit = 6) => {
 
     return tournaments.map(tournament => ({
       ...tournament.toJSON(),
-      current_participants: tournament.registrations ? tournament.registrations.length : 0
+      registrationsCount: tournament.registrations ? tournament.registrations.length : 0
     }))
   } catch (error) {
     throw new Error('Failed to get upcoming tournaments: ' + error.message)
@@ -116,11 +113,7 @@ const getRecentTournaments = async (limit = 6) => {
   try {
     const tournaments = await Tournament.findAll({
       where: {
-        status: 'completed',
-        end_date: {
-          [Op.lte]: new Date(),
-          [Op.gte]: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) // Last 90 days
-        }
+        status: 'completed'
       },
       include: [
         {
@@ -141,7 +134,7 @@ const getRecentTournaments = async (limit = 6) => {
 
     return tournaments.map(tournament => ({
       ...tournament.toJSON(),
-      current_participants: tournament.registrations ? tournament.registrations.length : 0
+      registrationsCount: tournament.registrations ? tournament.registrations.length : 0
     }))
   } catch (error) {
     throw new Error('Failed to get recent tournaments: ' + error.message)
