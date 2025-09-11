@@ -195,10 +195,141 @@ const uploadStateLogo = async (req, res) => {
   }
 }
 
+const uploadPartnerLogo = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file provided' })
+    }
+
+    // Upload to Cloudinary
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        {
+          folder: 'partner_logos',
+          transformation: [
+            { width: 300, height: 300, crop: 'fill', quality: 'auto' },
+            { radius: 'max' } // Makes it circular
+          ],
+          format: 'png'
+        },
+        (error, result) => {
+          if (error) {
+            reject(error)
+          } else {
+            resolve(result)
+          }
+        }
+      ).end(req.file.buffer)
+    })
+
+    res.json({
+      secure_url: result.secure_url,
+      public_id: result.public_id,
+      width: result.width,
+      height: result.height
+    })
+
+  } catch (error) {
+    console.error('Upload error:', error)
+    res.status(500).json({ 
+      message: 'Upload failed', 
+      error: error.message 
+    })
+  }
+}
+
+const uploadCoachPhoto = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file provided' })
+    }
+
+    // Upload to Cloudinary
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        {
+          folder: 'coach_photos',
+          transformation: [
+            { width: 300, height: 300, crop: 'fill', quality: 'auto' },
+            { radius: 'max' } // Makes it circular
+          ],
+          format: 'png'
+        },
+        (error, result) => {
+          if (error) {
+            reject(error)
+          } else {
+            resolve(result)
+          }
+        }
+      ).end(req.file.buffer)
+    })
+
+    res.json({
+      secure_url: result.secure_url,
+      public_id: result.public_id,
+      width: result.width,
+      height: result.height
+    })
+
+  } catch (error) {
+    console.error('Upload error:', error)
+    res.status(500).json({ 
+      message: 'Upload failed', 
+      error: error.message 
+    })
+  }
+}
+
+const uploadCoachDocument = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file provided' })
+    }
+
+    // Upload to Cloudinary
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        {
+          folder: 'coach_documents',
+          transformation: [
+            { width: 800, height: 600, crop: 'limit', quality: 'auto' }
+          ],
+          format: 'jpg'
+        },
+        (error, result) => {
+          if (error) {
+            reject(error)
+          } else {
+            resolve(result)
+          }
+        }
+      ).end(req.file.buffer)
+    })
+
+    res.json({
+      secure_url: result.secure_url,
+      public_id: result.public_id,
+      width: result.width,
+      height: result.height
+    })
+
+  } catch (error) {
+    console.error('Upload error:', error)
+    res.status(500).json({ 
+      message: 'Upload failed', 
+      error: error.message 
+    })
+  }
+}
+
 module.exports = {
   upload: upload.single('file'),
   uploadClubLogo,
   uploadPlayerPhoto,
   uploadPlayerDocument,
-  uploadStateLogo
+  uploadStateLogo,
+  uploadPartnerLogo,
+  uploadCoachPhoto,
+  uploadCoachDocument
 }
