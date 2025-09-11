@@ -251,7 +251,8 @@ const adminPaymentsController = {
       const paymentMethods = await PaymentMethod.findAll({
         include: [{
           model: User,
-          attributes: ['id', 'first_name', 'last_name', 'email']
+          as: 'user',
+          attributes: ['id', 'username', 'email', 'role']
         }],
         order: [['created_at', 'DESC']]
       })
@@ -272,7 +273,8 @@ const adminPaymentsController = {
       const payment = await Payment.findByPk(id, {
         include: [{
           model: User,
-          attributes: ['id', 'first_name', 'last_name', 'email']
+          as: 'user',
+          attributes: ['id', 'username', 'email', 'role']
         }]
       })
 
@@ -304,7 +306,8 @@ const adminPaymentsController = {
       const updatedPayment = await Payment.findByPk(id, {
         include: [{
           model: User,
-          attributes: ['id', 'first_name', 'last_name', 'email']
+          as: 'user',
+          attributes: ['id', 'username', 'email', 'role']
         }]
       })
 
@@ -347,7 +350,8 @@ const adminPaymentsController = {
       const updatedPayment = await Payment.findByPk(id, {
         include: [{
           model: User,
-          attributes: ['id', 'first_name', 'last_name', 'email']
+          as: 'user',
+          attributes: ['id', 'username', 'email', 'role']
         }]
       })
 

@@ -9,6 +9,7 @@ const {
   Tournament,
   Court,
   Message,
+  MessageRecipient,
   TournamentRegistration,
   CourtReservation,
   Microsite
@@ -48,7 +49,7 @@ const adminDashboardController = {
         Message.count(),
         Message.count({
           include: [{
-            model: require('../db/models/MessageRecipient'),
+            model: MessageRecipient,
             as: 'recipients',
             where: { is_read: false }
           }]

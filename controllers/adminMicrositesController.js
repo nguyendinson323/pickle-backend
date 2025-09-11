@@ -32,7 +32,13 @@ const getMicrosites = async (req, res) => {
     }
     
     if (status) {
-      whereClause.status = status
+      // Map frontend status values to database is_active field
+      if (status === 'active') {
+        whereClause.is_active = true
+      } else if (status === 'inactive') {
+        whereClause.is_active = false
+      }
+      // Note: suspended/pending would need additional status fields in DB
     }
     
     if (visibilityStatus) {
@@ -49,7 +55,7 @@ const getMicrosites = async (req, res) => {
       whereClause[Op.or] = [
         { title: { [Op.iLike]: `%${searchTerm}%` } },
         { description: { [Op.iLike]: `%${searchTerm}%` } },
-        { domain_name: { [Op.iLike]: `%${searchTerm}%` } }
+        { subdomain: { [Op.iLike]: `%${searchTerm}%` } }
       ]
     }
     
@@ -115,16 +121,33 @@ const getMicrosites = async (req, res) => {
         ownerName = microsite.ownerState.name
       }
 
+      const micrositeData = microsite.toJSON()
       return {
-        ...microsite.toJSON(),
-        owner_name: ownerName
+        ...micrositeData,
+        owner_name: ownerName,
+        // Map is_active to status for frontend compatibility
+        status: micrositeData.is_active ? 'active' : 'inactive',
+        // Add missing fields with default values
+        page_views: micrositeData.page_views || 0,
+        monthly_visitors: micrositeData.monthly_visitors || 0,
+        content_score: micrositeData.content_score || 0,
+        has_inappropriate_content: micrositeData.has_inappropriate_content || false,
+        content_warnings: micrositeData.content_warnings || [],
+        approval_status: micrositeData.approval_status || 'pending',
+        rejection_reason: micrositeData.rejection_reason || null,
+        visibility_status: micrositeData.visibility_status || 'public',
+        seo_score: micrositeData.seo_score || 0,
+        performance_score: micrositeData.performance_score || 0,
+        last_audit_date: micrositeData.last_audit_date || null,
+        contact_email: micrositeData.contact_email || '',
+        contact_phone: micrositeData.contact_phone || ''
       }
     })
 
     // Calculate statistics
     const totalMicrosites = await Microsite.count({ where: whereClause })
-    const activeMicrosites = await Microsite.count({ where: { ...whereClause, status: 'active' } })
-    const inactiveMicrosites = await Microsite.count({ where: { ...whereClause, status: 'inactive' } })
+    const activeMicrosites = await Microsite.count({ where: { ...whereClause, is_active: true } })
+    const inactiveMicrosites = await Microsite.count({ where: { ...whereClause, is_active: false } })
     const pendingApprovalMicrosites = await Microsite.count({ where: { ...whereClause, approval_status: 'pending' } })
     const clubMicrosites = await Microsite.count({ where: { ...whereClause, owner_type: 'club' } })
     const partnerMicrosites = await Microsite.count({ where: { ...whereClause, owner_type: 'partner' } })
