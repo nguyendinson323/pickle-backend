@@ -235,9 +235,9 @@ const getStateDashboard = async (req, res) => {
       attributes: [
         'id',
         'state_id',
-        [literal('(SELECT COUNT(*) FROM players WHERE players.state_id = "StateCommittee"."state_id")'), 'player_count']
+        [literal('(SELECT COUNT(*) FROM players WHERE players.state_id = "StateCommittee".state_id)'), 'player_count']
       ],
-      order: [[literal('(SELECT COUNT(*) FROM players WHERE players.state_id = "StateCommittee"."state_id")'), 'DESC']]
+      order: [[literal('(SELECT COUNT(*) FROM players WHERE players.state_id = "StateCommittee".state_id)'), 'DESC']]
     })
 
     const nationalRanking = allStatesPlayerCount.findIndex(state => 
