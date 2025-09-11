@@ -4,13 +4,16 @@ const authorize = (...allowedRoles) => {
       return res.status(401).json({ message: 'Authentication required' })
     }
 
+    // Flatten the allowedRoles array in case it's passed as ['role1', 'role2'] or [['role1', 'role2']]
+    const flattenedRoles = allowedRoles.flat()
+
     console.log('Authorization check:', {
       userRole: req.userRole,
-      allowedRoles,
-      includes: allowedRoles.includes(req.userRole)
+      allowedRoles: flattenedRoles,
+      includes: flattenedRoles.includes(req.userRole)
     })
 
-    if (!allowedRoles.includes(req.userRole)) {
+    if (!flattenedRoles.includes(req.userRole)) {
       return res.status(403).json({ message: 'Insufficient permissions' })
     }
 

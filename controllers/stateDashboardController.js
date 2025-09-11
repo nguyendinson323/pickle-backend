@@ -6,6 +6,12 @@ const { Op, fn, col, literal } = require('sequelize')
 
 const getStateDashboard = async (req, res) => {
   try {
+    console.log('🏛️ State Dashboard Request:', {
+      userId: req.user?.id,
+      userRole: req.userRole,
+      user: req.user ? { id: req.user.id, username: req.user.username, role: req.user.role } : null
+    })
+    
     // Get the state committee from the authenticated user
     const user = await User.findByPk(req.user.id, {
       include: [{
@@ -13,6 +19,8 @@ const getStateDashboard = async (req, res) => {
         as: 'stateCommittee'
       }]
     })
+    
+    console.log('🔍 User found:', user ? { id: user.id, role: user.role, hasStateCommittee: !!user.stateCommittee } : null)
 
     if (!user || !user.stateCommittee) {
       return res.status(404).json({ message: 'State committee not found' })
@@ -227,9 +235,9 @@ const getStateDashboard = async (req, res) => {
       attributes: [
         'id',
         'state_id',
-        [literal('(SELECT COUNT(*) FROM players WHERE players.state_id = StateCommittee.state_id)'), 'player_count']
+        [literal('(SELECT COUNT(*) FROM players WHERE players.state_id = "StateCommittee"."state_id")'), 'player_count']
       ],
-      order: [[literal('(SELECT COUNT(*) FROM players WHERE players.state_id = StateCommittee.state_id)'), 'DESC']]
+      order: [[literal('(SELECT COUNT(*) FROM players WHERE players.state_id = "StateCommittee"."state_id")'), 'DESC']]
     })
 
     const nationalRanking = allStatesPlayerCount.findIndex(state => 
