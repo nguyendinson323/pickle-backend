@@ -214,7 +214,7 @@ const playerFinderController = {
       });
 
       // Send notification to receiver (email/SMS)
-      await this.sendMatchRequestNotification(receiver.user, currentUser.player, matchRequest);
+      await playerFinderController.sendMatchRequestNotification(receiver.user, currentUser.player, matchRequest);
 
       // Return the created request with full details
       const createdRequest = await PlayerMatchRequest.findByPk(matchRequest.id, {
@@ -383,7 +383,7 @@ const playerFinderController = {
         });
 
         // Send notification to requester
-        await this.sendMatchRequestResponseNotification(
+        await playerFinderController.sendMatchRequestResponseNotification(
           matchRequest.requester.user,
           currentUser.player,
           matchRequest,

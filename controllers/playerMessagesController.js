@@ -449,7 +449,7 @@ const playerMessagesController = {
               model: ChatParticipant,
               as: 'participants',
               where: {
-                user_id: { [Op.in]: [userId, player.user_id] }
+                user_id: { [Op.in]: [userId, player.user?.id] }
               }
             }
           ]
@@ -462,7 +462,7 @@ const playerMessagesController = {
           const participantIds = room.participants.map(p => p.user_id);
           if (participantIds.length === 2 && 
               participantIds.includes(userId) && 
-              participantIds.includes(player.user_id)) {
+              participantIds.includes(player.user?.id)) {
             lastConversationId = room.id;
             break;
           }

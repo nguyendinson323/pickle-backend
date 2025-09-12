@@ -964,7 +964,7 @@ const playerRankingsController = {
           }
         ],
         limit: 10,
-        attributes: ['id', 'full_name', 'profile_image', 'skill_level']
+        attributes: ['id', 'full_name', 'profile_photo_url', 'nrtp_level']
       });
 
       // Get actual ranking data for these players
