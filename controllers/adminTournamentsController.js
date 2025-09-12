@@ -62,29 +62,9 @@ const getTournaments = async (req, res) => {
       where: whereConditions,
       include: [
         {
-          model: User,
-          as: 'organizer',
-          attributes: ['id', 'username', 'email', 'role'],
-          include: [
-            {
-              model: Club,
-              as: 'club',
-              attributes: ['id', 'name'],
-              required: false
-            },
-            {
-              model: Partner,
-              as: 'partner', 
-              attributes: ['id', 'business_name'],
-              required: false
-            },
-            {
-              model: State,
-              as: 'state',
-              attributes: ['id', 'name'],
-              required: false
-            }
-          ],
+          model: State,
+          as: 'state',
+          attributes: ['id', 'name'],
           required: false
         }
       ],
@@ -94,21 +74,13 @@ const getTournaments = async (req, res) => {
 
     // Transform data for frontend
     const transformedTournaments = tournaments.map(tournament => {
-      const organizer = tournament.organizer
       let organizerName = 'Unknown'
-      let organizerType = 'unknown'
+      let organizerType = tournament.organizer_type || 'unknown'
       
-      if (organizer) {
-        organizerType = organizer.role
-        if (organizer.role === 'club' && organizer.club) {
-          organizerName = organizer.club.name
-        } else if (organizer.role === 'partner' && organizer.partner) {
-          organizerName = organizer.partner.business_name
-        } else if (organizer.role === 'state' && organizer.state) {
-          organizerName = organizer.state.name
-        } else {
-          organizerName = organizer.username
-        }
+      // For now, use organizer_id as placeholder name
+      // In a full implementation, you'd query the appropriate table based on organizer_type
+      if (tournament.organizer_id) {
+        organizerName = `${organizerType.toUpperCase()} #${tournament.organizer_id}`
       }
       
       return {
@@ -245,6 +217,7 @@ const getTournamentParticipants = async (req, res) => {
       include: [
         {
           model: Tournament,
+          as: 'tournament',
           attributes: ['id', 'name', 'entry_fee'],
           required: true
         },
@@ -310,6 +283,7 @@ const getAllParticipants = async (req, res) => {
       include: [
         {
           model: Tournament,
+          as: 'tournament',
           attributes: ['id', 'name', 'entry_fee'],
           required: true
         },
@@ -361,29 +335,9 @@ const getTournamentDetails = async (req, res) => {
     const tournament = await Tournament.findByPk(id, {
       include: [
         {
-          model: User,
-          as: 'organizer',
-          attributes: ['id', 'username', 'email', 'role'],
-          include: [
-            {
-              model: Club,
-              as: 'club',
-              attributes: ['id', 'name'],
-              required: false
-            },
-            {
-              model: Partner,
-              as: 'partner',
-              attributes: ['id', 'business_name'],
-              required: false
-            },
-            {
-              model: State,
-              as: 'state',
-              attributes: ['id', 'name'],
-              required: false
-            }
-          ],
+          model: State,
+          as: 'state',
+          attributes: ['id', 'name'],
           required: false
         }
       ]
@@ -403,21 +357,13 @@ const getTournamentDetails = async (req, res) => {
       where: { tournament_id: id, payment_status: 'paid' }
     }) || 0
 
-    const organizer = tournament.organizer
     let organizerName = 'Unknown'
-    let organizerType = 'unknown'
+    let organizerType = tournament.organizer_type || 'unknown'
     
-    if (organizer) {
-      organizerType = organizer.role
-      if (organizer.role === 'club' && organizer.club) {
-        organizerName = organizer.club.name
-      } else if (organizer.role === 'partner' && organizer.partner) {
-        organizerName = organizer.partner.business_name
-      } else if (organizer.role === 'state' && organizer.state) {
-        organizerName = organizer.state.name
-      } else {
-        organizerName = organizer.username
-      }
+    // For now, use organizer_id as placeholder name
+    // In a full implementation, you'd query the appropriate table based on organizer_type
+    if (tournament.organizer_id) {
+      organizerName = `${organizerType.toUpperCase()} #${tournament.organizer_id}`
     }
 
     const tournamentDetails = {
@@ -818,29 +764,9 @@ const getTournamentsData = async (filters = {}) => {
   const tournaments = await Tournament.findAll({
     include: [
       {
-        model: User,
-        as: 'organizer',
-        attributes: ['username', 'role'],
-        include: [
-          {
-            model: Club,
-            as: 'club',
-            attributes: ['name'],
-            required: false
-          },
-          {
-            model: Partner,
-            as: 'partner',
-            attributes: ['business_name'],
-            required: false
-          },
-          {
-            model: State,
-            as: 'state', 
-            attributes: ['name'],
-            required: false
-          }
-        ],
+        model: State,
+        as: 'state',
+        attributes: ['id', 'name'],
         required: false
       }
     ],
@@ -848,19 +774,12 @@ const getTournamentsData = async (filters = {}) => {
   })
 
   return tournaments.map(tournament => {
-    const organizer = tournament.organizer
     let organizerName = 'Unknown'
     
-    if (organizer) {
-      if (organizer.role === 'club' && organizer.club) {
-        organizerName = organizer.club.name
-      } else if (organizer.role === 'partner' && organizer.partner) {
-        organizerName = organizer.partner.business_name
-      } else if (organizer.role === 'state' && organizer.state) {
-        organizerName = organizer.state.name
-      } else {
-        organizerName = organizer.username
-      }
+    // For now, use organizer_id as placeholder name
+    // In a full implementation, you'd query the appropriate table based on organizer_type
+    if (tournament.organizer_id) {
+      organizerName = `${(tournament.organizer_type || 'unknown').toUpperCase()} #${tournament.organizer_id}`
     }
 
     return {

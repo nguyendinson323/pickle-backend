@@ -101,7 +101,7 @@ module.exports = {
         unique: true
       },
       qr_code_url: {
-        type: Sequelize.STRING
+        type: Sequelize.TEXT
       },
       tournament_id: {
         type: Sequelize.INTEGER,

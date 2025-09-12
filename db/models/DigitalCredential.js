@@ -59,7 +59,7 @@ module.exports = (sequelize, DataTypes) => {
       unique: true
     },
     qr_code_url: {
-      type: DataTypes.STRING
+      type: DataTypes.TEXT
     },
     tournament_id: {
       type: DataTypes.INTEGER,

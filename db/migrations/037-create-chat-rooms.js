@@ -21,6 +21,10 @@ module.exports = {
           isIn: [['direct', 'group', 'tournament', 'state', 'club']]
         }
       },
+      last_message_at: {
+        type: Sequelize.DATE,
+        allowNull: true
+      },
       created_at: {
         allowNull: false,
         type: Sequelize.DATE,

@@ -172,8 +172,23 @@ const digitalCredentialsController = {
         return res.status(404).json({ error: 'Player profile not found' });
       }
 
-      // Generate unique QR code data
-      const qrCodeData = crypto.randomBytes(16).toString('hex') + '-' + user.player.id + '-' + Date.now();
+      // Generate unique QR code data with essential player information
+      const playerInfo = {
+        id: user.player.id,
+        name: user.player.full_name,
+        nrtp: user.player.nrtp_level,
+        state: user.player.state?.name,
+        club: user.player.club?.name || 'Independent',
+        nationality: user.player.nationality
+      };
+      
+      // Create QR data that contains essential info but isn't overly complex
+      const qrCodeData = JSON.stringify({
+        credentialId: crypto.randomBytes(8).toString('hex'),
+        playerId: user.player.id,
+        issued: new Date().toISOString(),
+        ...playerInfo
+      });
 
       // Create credential
       const credential = await DigitalCredential.create({
@@ -189,7 +204,7 @@ const digitalCredentialsController = {
       });
 
       // Generate QR code image
-      const qrCodeUrl = await digitalCredentialsController.generateQRCodeImage(credential.qr_code_data, credential.id);
+      const qrCodeUrl = await module.exports.generateQRCodeImage(credential.qr_code_data, credential.id);
       await credential.update({ qr_code_url: qrCodeUrl });
 
       // Return formatted credential
@@ -244,7 +259,7 @@ const digitalCredentialsController = {
       // Generate new QR code if needed
       let qrCodeUrl = credential.qr_code_url;
       if (!qrCodeUrl) {
-        qrCodeUrl = await digitalCredentialsController.generateQRCodeImage(credential.qr_code_data, credential.id);
+        qrCodeUrl = await module.exports.generateQRCodeImage(credential.qr_code_data, credential.id);
         await credential.update({ qr_code_url: qrCodeUrl });
       }
 

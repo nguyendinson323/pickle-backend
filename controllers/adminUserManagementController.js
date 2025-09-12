@@ -65,18 +65,18 @@ const getUsers = async (req, res) => {
       include: [
         {
           model: Player,
-          as: 'PlayerProfile',
+          as: 'player',
           required: false,
           where: Object.keys(profileWhere).length > 0 ? profileWhere : undefined,
           include: [
             {
               model: State,
-              as: 'State',
+              as: 'state',
               attributes: ['id', 'name']
             },
             {
               model: Club,
-              as: 'Club',
+              as: 'club',
               required: false,
               attributes: ['id', 'name']
             }
@@ -84,51 +84,51 @@ const getUsers = async (req, res) => {
         },
         {
           model: Coach,
-          as: 'CoachProfile',
+          as: 'coach',
           required: false,
           where: Object.keys(profileWhere).length > 0 ? profileWhere : undefined,
           include: [
             {
               model: State,
-              as: 'State',
+              as: 'state',
               attributes: ['id', 'name']
             }
           ]
         },
         {
           model: Club,
-          as: 'ClubProfile',
+          as: 'club',
           required: false,
           where: Object.keys(profileWhere).length > 0 ? profileWhere : undefined,
           include: [
             {
               model: State,
-              as: 'State',
+              as: 'state',
               attributes: ['id', 'name']
             }
           ]
         },
         {
           model: Partner,
-          as: 'PartnerProfile',
+          as: 'partner',
           required: false,
           where: Object.keys(profileWhere).length > 0 ? profileWhere : undefined,
           include: [
             {
               model: State,
-              as: 'State',
+              as: 'state',
               attributes: ['id', 'name']
             }
           ]
         },
         {
           model: StateCommittee,
-          as: 'StateProfile',
+          as: 'stateCommittee',
           required: false,
           include: [
             {
               model: State,
-              as: 'State',
+              as: 'state',
               attributes: ['id', 'name']
             }
           ]
@@ -236,7 +236,7 @@ const getUserDetails = async (req, res) => {
           include: [
             {
               model: State,
-              as: 'State',
+              as: 'state',
               attributes: ['id', 'name']
             },
             {
@@ -254,7 +254,7 @@ const getUserDetails = async (req, res) => {
           include: [
             {
               model: State,
-              as: 'State',
+              as: 'state',
               attributes: ['id', 'name']
             }
           ]
@@ -266,31 +266,31 @@ const getUserDetails = async (req, res) => {
           include: [
             {
               model: State,
-              as: 'State',
+              as: 'state',
               attributes: ['id', 'name']
             }
           ]
         },
         {
           model: Partner,
-          as: 'PartnerProfile',
+          as: 'partner',
           required: false,
           include: [
             {
               model: State,
-              as: 'State',
+              as: 'state',
               attributes: ['id', 'name']
             }
           ]
         },
         {
           model: StateCommittee,
-          as: 'StateProfile',
+          as: 'stateCommittee',
           required: false,
           include: [
             {
               model: State,
-              as: 'State',
+              as: 'state',
               attributes: ['id', 'name']
             }
           ]
@@ -410,7 +410,7 @@ const getUserDetails = async (req, res) => {
         include: [
           {
             model: Partner,
-            as: 'PartnerProfile',
+            as: 'partner',
             where: { state_id: user.StateProfile.state_id },
             required: true
           }
