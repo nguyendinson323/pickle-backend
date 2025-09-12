@@ -90,7 +90,7 @@ const updateProfile = async (req, res) => {
     if (full_name !== undefined) updateData.full_name = full_name
     if (birth_date !== undefined) updateData.birth_date = birth_date
     if (gender !== undefined) updateData.gender = gender
-    if (state_id !== undefined) updateData.state_id = state_id
+    if (state_id !== undefined) updateData.state_id = state_id === 0 ? null : state_id
     if (curp !== undefined) updateData.curp = curp
     if (nrtp_level !== undefined) updateData.nrtp_level = nrtp_level
     if (profile_photo_url !== undefined) updateData.profile_photo_url = profile_photo_url
