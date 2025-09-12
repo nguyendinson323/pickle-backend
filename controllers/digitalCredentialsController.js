@@ -189,7 +189,7 @@ const digitalCredentialsController = {
       });
 
       // Generate QR code image
-      const qrCodeUrl = await this.generateQRCodeImage(credential.qr_code_data, credential.id);
+      const qrCodeUrl = await digitalCredentialsController.generateQRCodeImage(credential.qr_code_data, credential.id);
       await credential.update({ qr_code_url: qrCodeUrl });
 
       // Return formatted credential
@@ -244,7 +244,7 @@ const digitalCredentialsController = {
       // Generate new QR code if needed
       let qrCodeUrl = credential.qr_code_url;
       if (!qrCodeUrl) {
-        qrCodeUrl = await this.generateQRCodeImage(credential.qr_code_data, credential.id);
+        qrCodeUrl = await digitalCredentialsController.generateQRCodeImage(credential.qr_code_data, credential.id);
         await credential.update({ qr_code_url: qrCodeUrl });
       }
 
