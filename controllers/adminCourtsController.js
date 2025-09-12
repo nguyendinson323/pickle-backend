@@ -15,7 +15,6 @@ const getCourts = async (req, res) => {
       minRate,
       maxRate
     } = req.query
-
     // Build filter conditions
     const whereConditions = {}
     
