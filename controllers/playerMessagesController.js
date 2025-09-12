@@ -538,6 +538,7 @@ const playerMessagesController = {
         if (otherParticipant && otherParticipant.user && otherParticipant.user.player) {
           return {
             id: otherParticipant.user.player.id,
+            user_id: otherParticipant.user.id,
             full_name: otherParticipant.user.player.full_name,
             email: otherParticipant.user.email || '',
             profile_image: otherParticipant.user.player.profile_photo_url,

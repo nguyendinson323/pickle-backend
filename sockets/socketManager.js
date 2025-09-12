@@ -84,7 +84,7 @@ class SocketManager {
           {
             model: ChatRoom,
             as: 'chatRoom',
-            attributes: ['id', 'room_type', 'name']
+            attributes: ['id', 'type', 'name']
           }
         ]
       })
@@ -232,8 +232,7 @@ class SocketManager {
       // Update last read message for user
       await ChatParticipant.update(
         { 
-          last_read: new Date(),
-          last_read_message_id: messageId 
+          last_read: new Date()
         },
         {
           where: {

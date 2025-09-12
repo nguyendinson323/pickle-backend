@@ -33,6 +33,10 @@ module.exports = (sequelize, DataTypes) => {
       validate: {
         isIn: [['direct', 'group', 'tournament', 'state', 'club']]
       }
+    },
+    last_message_at: {
+      type: DataTypes.DATE,
+      allowNull: true
     }
   }, {
     sequelize,
