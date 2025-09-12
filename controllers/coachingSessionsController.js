@@ -1,4 +1,4 @@
-const { CoachingSession, Player, Coach, User, State, CoachAvailability } = require('../db/models');
+const { CoachingSession, Player, Coach, User, State, CoachAvailability, CoachCertification, Court } = require('../db/models');
 const { Op, Sequelize } = require('sequelize');
 
 const coachingSessionsController = {
@@ -536,15 +536,15 @@ const coachingSessionsController = {
       const user = await User.findByPk(userId, {
         include: [{
           model: Player,
-          as: 'player'
+          as: 'PlayerProfile'
         }]
       });
       
-      if (!user || !user.player) {
+      if (!user || !user.PlayerProfile) {
         return res.status(404).json({ error: 'Player not found' });
       }
       
-      const playerId = user.player.id;
+      const playerId = user.PlayerProfile.id;
 
       const session = await CoachingSession.findOne({
         where: {
@@ -621,15 +621,15 @@ const coachingSessionsController = {
       const user = await User.findByPk(userId, {
         include: [{
           model: Player,
-          as: 'player'
+          as: 'PlayerProfile'
         }]
       });
       
-      if (!user || !user.player) {
+      if (!user || !user.PlayerProfile) {
         return res.status(404).json({ error: 'Player not found' });
       }
       
-      const playerId = user.player.id;
+      const playerId = user.PlayerProfile.id;
 
       // Find the session for this player
       const session = await CoachingSession.findOne({
