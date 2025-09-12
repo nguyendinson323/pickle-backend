@@ -1,5 +1,4 @@
-const { CoachCertification, Coach, User } = require('../db/models')
-const { Op, Sequelize } = require('sequelize')
+const { CoachCertification, Coach } = require('../db/models')
 
 // Get all coach certifications data
 const getCoachCertificationsData = async (req, res) => {
@@ -90,45 +89,9 @@ const addCertification = async (req, res) => {
       certificate_url
     })
 
-    // Recalculate stats
-    const allCertifications = await CoachCertification.findAll({
-      where: { coach_id: coach.id }
-    })
-
-    const currentDate = new Date()
-    const thirtyDaysFromNow = new Date(currentDate.getTime() + (30 * 24 * 60 * 60 * 1000))
-    
-    const totalCertifications = allCertifications.length
-    let activeCertifications = 0
-    let expiredCertifications = 0
-    let expiringSoon = 0
-
-    allCertifications.forEach(cert => {
-      if (cert.expiry_date) {
-        const expiryDate = new Date(cert.expiry_date)
-        if (expiryDate < currentDate) {
-          expiredCertifications++
-        } else {
-          activeCertifications++
-          if (expiryDate <= thirtyDaysFromNow) {
-            expiringSoon++
-          }
-        }
-      } else {
-        activeCertifications++
-      }
-    })
-
-    const stats = {
-      total_certifications: totalCertifications,
-      active_certifications: activeCertifications,
-      expired_certifications: expiredCertifications,
-      expiring_soon: expiringSoon
-    }
 
     res.json({
-      ...certification.toJSON(),
-      stats
+      certification: certification.toJSON()
     })
 
   } catch (error) {
@@ -174,7 +137,9 @@ const updateCertification = async (req, res) => {
       certificate_url: certificate_url || certification.certificate_url
     })
 
-    res.json(certification)
+    res.json({
+      certification: certification.toJSON()
+    })
 
   } catch (error) {
     console.error('Error updating certification:', error)
@@ -250,11 +215,12 @@ const downloadCertificate = async (req, res) => {
       return res.status(404).json({ message: 'Certificate file not available' })
     }
 
-    // In a real implementation, you would:
-    // 1. Fetch the file from cloud storage (e.g., Cloudinary, S3)
-    // 2. Stream it back to the client
-    // For now, we'll redirect to the certificate URL
-    res.redirect(certification.certificate_url)
+    // For now, return the certificate URL for the frontend to handle
+    // In production, you would fetch from cloud storage and stream the file
+    res.json({
+      download_url: certification.certificate_url,
+      filename: `${certification.name}_certificate.pdf`
+    })
 
   } catch (error) {
     console.error('Error downloading certificate:', error)

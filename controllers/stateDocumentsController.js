@@ -286,8 +286,12 @@ const deleteStateDocument = async (req, res) => {
     // Delete from Cloudinary if it's a Cloudinary URL
     if (document.document_url && document.document_url.includes('cloudinary.com')) {
       try {
-        const publicId = document.document_url.split('/').pop().split('.')[0]
-        await cloudinary.uploader.destroy(publicId)
+        // Extract public_id from Cloudinary URL
+        const urlParts = document.document_url.split('/')
+        const fileWithExtension = urlParts[urlParts.length - 1]
+        const fileName = fileWithExtension.split('.')[0]
+        const folderPath = 'state-documents/' + fileName
+        await cloudinary.uploader.destroy(folderPath)
       } catch (cloudinaryError) {
         console.error('Cloudinary deletion error:', cloudinaryError)
         // Continue with database deletion even if Cloudinary fails

@@ -15,6 +15,9 @@ const { authenticate } = require('../middlewares/authMiddleware')
 // Upload club logo - protected route
 router.post('/club-logo', authenticate, upload, uploadClubLogo)
 
+// Upload partner logo - protected route
+router.post('/partner-logo', authenticate, upload, uploadPartnerLogo)
+
 // Registration upload routes - public routes
 router.post('/club-logo-registration', upload, uploadClubLogo)
 router.post('/player-photo-registration', upload, uploadPlayerPhoto)

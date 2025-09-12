@@ -176,7 +176,7 @@ const subscribeToCoachPlan = async (req, res) => {
     const payment = await Payment.create({
       user_id: userId,
       amount: amount,
-      currency: 'USD',
+      currency: 'MXN',
       status: 'completed',
       payment_type: 'membership',
       payment_method: payment_method,
@@ -294,7 +294,7 @@ const renewCoachSubscription = async (req, res) => {
     const payment = await Payment.create({
       user_id: userId,
       amount: amount,
-      currency: 'USD',
+      currency: 'MXN',
       status: 'completed',
       payment_type: 'membership',
       payment_method: payment_method,

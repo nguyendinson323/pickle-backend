@@ -1,9 +1,5 @@
-const { StateCommittee, Tournament, Court, Club, Partner, Player, Coach, User, State } = require('../db/models')
+const { StateCommittee, StateMicrosite, StateMicrositeNews, Tournament, Court, Club, Partner, Player, Coach, User, State } = require('../db/models')
 const { Op, Sequelize } = require('sequelize')
-
-// Mock data structure for state microsite (since we don't have actual tables yet)
-let stateMicrositeData = new Map()
-let stateMicrositeNews = new Map()
 
 // Get state microsite data (public or authenticated view)
 const getStateMicrositeData = async (req, res) => {
@@ -41,13 +37,24 @@ const getStateMicrositeData = async (req, res) => {
       attributes: ['id', 'name']
     })
 
-    // Get or create default microsite info (using mock data for now)
-    let micrositeInfo = stateMicrositeData.get(stateCommitteeId)
+    // Get or create microsite info from database
+    let micrositeInfo = await StateMicrosite.findOne({
+      where: { state_committee_id: stateCommitteeId },
+      include: [{
+        model: StateCommittee,
+        as: 'state_committee',
+        include: [{
+          model: State,
+          as: 'state',
+          attributes: ['name', 'short_code']
+        }],
+        attributes: ['id', 'name']
+      }]
+    })
     
     if (!micrositeInfo) {
       // Create default microsite info
-      micrositeInfo = {
-        id: stateCommitteeId,
+      micrositeInfo = await StateMicrosite.create({
         state_committee_id: stateCommitteeId,
         title: `${stateCommittee.state.name} Pickleball Association`,
         description: `Official pickleball association for the state of ${stateCommittee.state.name}`,
@@ -63,9 +70,12 @@ const getStateMicrositeData = async (req, res) => {
         address: null,
         established_year: null,
         is_public: true,
-        custom_content: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        custom_content: null
+      })
+
+      // Add state committee info to the response
+      micrositeInfo = {
+        ...micrositeInfo.toJSON(),
         state_committee: {
           id: stateCommittee.id,
           name: stateCommittee.name,
@@ -74,23 +84,25 @@ const getStateMicrositeData = async (req, res) => {
           is_active: true
         }
       }
-      
-      stateMicrositeData.set(stateCommitteeId, micrositeInfo)
     } else {
-      // Update state committee info in existing data
-      micrositeInfo.state_committee = {
-        id: stateCommittee.id,
-        name: stateCommittee.name,
-        state_name: stateCommittee.state.name,
-        state_code: stateCommittee.state.short_code,
-        is_active: true
+      // Convert to JSON and ensure state committee info is included
+      micrositeInfo = {
+        ...micrositeInfo.toJSON(),
+        state_committee: {
+          id: stateCommittee.id,
+          name: stateCommittee.name,
+          state_name: stateCommittee.state.name,
+          state_code: stateCommittee.state.short_code,
+          is_active: true
+        }
       }
     }
 
-    // Get state statistics
+    // Get state statistics - use state_id for foreign key relationships
+    const stateCommitteeStateId = stateCommittee.state_id
     const committeeId = stateCommittee.id
 
-    // Count tournaments
+    // Count tournaments organized by this state committee
     const [totalTournaments, activeTournaments, upcomingTournaments] = await Promise.all([
       Tournament.count({
         where: { 
@@ -117,18 +129,19 @@ const getStateMicrositeData = async (req, res) => {
     // Count clubs, courts, players, partners, coaches in the state
     const [totalClubs, totalCourts, totalPlayers, totalPartners, totalCoaches] = await Promise.all([
       Club.count({
-        where: { state_id: committeeId }
+        where: { state_id: stateCommitteeStateId }
       }),
-      // Simplified court count - just count all courts for now
-      Court.count(),
+      Court.count({
+        where: { state_id: stateCommitteeStateId }
+      }),
       Player.count({
-        where: { state_id: committeeId }
+        where: { state_id: stateCommitteeStateId }
       }),
       Partner.count({
-        where: { state_id: committeeId }
+        where: { state_id: stateCommitteeStateId }
       }),
       Coach.count({
-        where: { state_id: committeeId }
+        where: { state_id: stateCommitteeStateId }
       })
     ])
 
@@ -166,9 +179,9 @@ const getStateMicrositeData = async (req, res) => {
       current_registrations: 0 // This would need to be calculated from actual registrations table
     }))
 
-    // Get top clubs in the state (simplified)
+    // Get top clubs in the state
     const clubs = await Club.findAll({
-      where: { state_id: committeeId },
+      where: { state_id: stateCommitteeStateId },
       attributes: [
         'id', 'name', 'website', 'social_media'
       ],
@@ -191,21 +204,28 @@ const getStateMicrositeData = async (req, res) => {
       amenities: null // Not available in current schema
     }))
 
-    // Get news articles (from mock data for now)
-    const newsArray = stateMicrositeNews.get(stateCommitteeId) || []
-    const news = newsArray.sort((a, b) => {
-      if (a.is_featured !== b.is_featured) {
-        return b.is_featured ? 1 : -1
-      }
-      return new Date(b.published_date).getTime() - new Date(a.published_date).getTime()
-    }).slice(0, 10)
+    // Get news articles from database
+    const news = await StateMicrositeNews.findAll({
+      where: { state_committee_id: stateCommitteeId },
+      attributes: [
+        'id', 'title', 'content', 'author_name', 'published_date', 
+        'is_featured', 'image_url'
+      ],
+      order: [
+        ['is_featured', 'DESC'],
+        ['published_date', 'DESC']
+      ],
+      limit: 10
+    })
+
+    const newsData = news.map(article => article.toJSON())
 
     res.json({
       micrositeInfo,
       stats,
       upcomingEvents: eventsWithRegistrations,
       clubs: clubsData,
-      news
+      news: newsData
     })
 
   } catch (error) {
@@ -237,34 +257,39 @@ const updateStateMicrosite = async (req, res) => {
 
     const stateCommitteeId = stateCommittee.id
 
-    // Get existing microsite data or create default
-    let micrositeInfo = stateMicrositeData.get(stateCommitteeId) || {
-      id: stateCommitteeId,
-      state_committee_id: stateCommitteeId,
-      title: `${stateCommittee.state.name} Pickleball Association`,
-      description: `Official pickleball association for the state of ${stateCommittee.state.name}`,
-      mission_statement: `To promote and develop pickleball throughout ${stateCommittee.state.name} by organizing tournaments, supporting clubs, and fostering community engagement.`,
-      contact_email: 'info@pickleballassociation.com',
-      contact_phone: null,
-      website_url: null,
-      facebook_url: null,
-      twitter_url: null,
-      instagram_url: null,
-      logo_url: null,
-      banner_image_url: null,
-      address: null,
-      established_year: null,
-      is_public: true,
-      custom_content: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+    // Get or create microsite from database
+    let micrositeInfo = await StateMicrosite.findOne({
+      where: { state_committee_id: stateCommitteeId }
+    })
+
+    if (!micrositeInfo) {
+      // Create default microsite if it doesn't exist
+      micrositeInfo = await StateMicrosite.create({
+        state_committee_id: stateCommitteeId,
+        title: `${stateCommittee.state.name} Pickleball Association`,
+        description: `Official pickleball association for the state of ${stateCommittee.state.name}`,
+        mission_statement: `To promote and develop pickleball throughout ${stateCommittee.state.name} by organizing tournaments, supporting clubs, and fostering community engagement.`,
+        contact_email: 'info@pickleballassociation.com',
+        contact_phone: null,
+        website_url: null,
+        facebook_url: null,
+        twitter_url: null,
+        instagram_url: null,
+        logo_url: null,
+        banner_image_url: null,
+        address: null,
+        established_year: null,
+        is_public: true,
+        custom_content: null
+      })
     }
 
-    // Update the microsite data
-    micrositeInfo = {
-      ...micrositeInfo,
-      ...updateData,
-      updated_at: new Date().toISOString(),
+    // Update the microsite with new data
+    await micrositeInfo.update(updateData)
+    
+    // Add state committee info to the response
+    const updatedMicrositeInfo = {
+      ...micrositeInfo.toJSON(),
       state_committee: {
         id: stateCommittee.id,
         name: stateCommittee.name,
@@ -274,11 +299,8 @@ const updateStateMicrosite = async (req, res) => {
       }
     }
 
-    // Save updated data
-    stateMicrositeData.set(stateCommitteeId, micrositeInfo)
-
     res.json({
-      micrositeInfo,
+      micrositeInfo: updatedMicrositeInfo,
       message: 'Microsite updated successfully'
     })
 
@@ -310,26 +332,19 @@ const createMicrositeNews = async (req, res) => {
 
     const stateCommitteeId = stateCommittee.id
 
-    // Get existing news array or create new one
-    let newsArray = stateMicrositeNews.get(stateCommitteeId) || []
-
-    // Create new news article
-    const news = {
-      id: Date.now(), // Simple ID generation for mock data
+    // Create new news article in database
+    const news = await StateMicrositeNews.create({
+      state_committee_id: stateCommitteeId,
       title,
       content,
       author_name: user.username,
       is_featured: is_featured || false,
       image_url: image_url || null,
-      published_date: new Date().toISOString()
-    }
-
-    // Add to array
-    newsArray.unshift(news)
-    stateMicrositeNews.set(stateCommitteeId, newsArray)
+      published_date: new Date()
+    })
 
     res.status(201).json({
-      news,
+      news: news.toJSON(),
       message: 'News article created successfully'
     })
 
@@ -356,24 +371,24 @@ const updateMicrositeNews = async (req, res) => {
     }
 
     const stateCommitteeId = stateCommittee.id
-    let newsArray = stateMicrositeNews.get(stateCommitteeId) || []
 
-    // Find and update news article
-    const newsIndex = newsArray.findIndex(article => article.id == newsId)
-    if (newsIndex === -1) {
+    // Find and update news article in database
+    const news = await StateMicrositeNews.findOne({
+      where: { 
+        id: newsId,
+        state_committee_id: stateCommitteeId 
+      }
+    })
+
+    if (!news) {
       return res.status(404).json({ message: 'News article not found' })
     }
 
     // Update the article
-    newsArray[newsIndex] = {
-      ...newsArray[newsIndex],
-      ...updateData
-    }
-
-    stateMicrositeNews.set(stateCommitteeId, newsArray)
+    await news.update(updateData)
 
     res.json({
-      news: newsArray[newsIndex],
+      news: news.toJSON(),
       message: 'News article updated successfully'
     })
 
@@ -399,17 +414,21 @@ const deleteMicrositeNews = async (req, res) => {
     }
 
     const stateCommitteeId = stateCommittee.id
-    let newsArray = stateMicrositeNews.get(stateCommitteeId) || []
 
-    // Find and delete news article
-    const newsIndex = newsArray.findIndex(article => article.id == newsId)
-    if (newsIndex === -1) {
+    // Find and delete news article from database
+    const news = await StateMicrositeNews.findOne({
+      where: { 
+        id: newsId,
+        state_committee_id: stateCommitteeId 
+      }
+    })
+
+    if (!news) {
       return res.status(404).json({ message: 'News article not found' })
     }
 
-    // Remove the article
-    newsArray.splice(newsIndex, 1)
-    stateMicrositeNews.set(stateCommitteeId, newsArray)
+    // Delete the article
+    await news.destroy()
 
     res.json({ message: 'News article deleted successfully' })
 

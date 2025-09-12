@@ -1,4 +1,4 @@
-const { StateCommittee, Player, Coach, Club, Partner, User, Sequelize } = require('../db/models')
+const { StateCommittee, Player, Coach, Club, Partner, User, State, Sequelize } = require('../db/models')
 const { Op } = require('sequelize')
 
 // Get comprehensive state member management data
@@ -22,7 +22,7 @@ const getStateMemberData = async (req, res) => {
       return res.status(404).json({ message: 'State committee profile not found' })
     }
 
-    const stateId = stateCommittee.id
+    const stateId = stateCommittee.state_id
 
     // Build where conditions based on filters
     const playerWhere = { state_id: stateId }
@@ -33,50 +33,45 @@ const getStateMemberData = async (req, res) => {
     // Apply search filter
     const searchCondition = search ? {
       [Op.or]: [
-        { '$user.first_name$': { [Op.iLike]: `%${search}%` } },
-        { '$user.last_name$': { [Op.iLike]: `%${search}%` } },
         { '$user.email$': { [Op.iLike]: `%${search}%` } },
-        { '$user.username$': { [Op.iLike]: `%${search}%` } }
+        { '$user.username$': { [Op.iLike]: `%${search}%` } },
+        { full_name: { [Op.iLike]: `%${search}%` } }
       ]
     } : {}
 
     const clubSearchCondition = search ? {
       [Op.or]: [
         { name: { [Op.iLike]: `%${search}%` } },
-        { contact_email: { [Op.iLike]: `%${search}%` } }
+        { '$user.email$': { [Op.iLike]: `%${search}%` } }
       ]
     } : {}
 
     const partnerSearchCondition = search ? {
       [Op.or]: [
-        { name: { [Op.iLike]: `%${search}%` } },
-        { contact_email: { [Op.iLike]: `%${search}%` } }
+        { business_name: { [Op.iLike]: `%${search}%` } },
+        { '$user.email$': { [Op.iLike]: `%${search}%` } }
       ]
     } : {}
 
-    // Apply status filters
+    // Apply status filters based on available fields
     if (status) {
       if (status === 'active') {
-        playerWhere.membership_status = 'active'
-        coachWhere.is_verified = true
-        clubWhere.is_active = true
-        partnerWhere.is_active = true
+        // Players with unexpired affiliations
+        playerWhere.affiliation_expires_at = { [Op.or]: [null, { [Op.gte]: new Date() }] }
+        // No specific status field for coaches
+        // No specific status field for clubs/partners - use premium/affiliation status
       } else if (status === 'inactive') {
-        playerWhere.membership_status = { [Op.in]: ['inactive', 'suspended'] }
-        coachWhere.is_verified = false
-        clubWhere.is_active = false
-        partnerWhere.is_active = false
+        // Players with expired affiliations
+        playerWhere.affiliation_expires_at = { [Op.lt]: new Date() }
       }
     }
 
     // Apply specific filters
     if (skill_level) {
-      playerWhere.skill_level = skill_level
+      playerWhere.nrtp_level = skill_level
     }
 
-    if (certification_level) {
-      coachWhere.certification_level = certification_level
-    }
+    // No certification_level field in actual schema, skip this filter
 
     // Fetch data based on member_type filter or get all
     let players = []
@@ -91,18 +86,23 @@ const getStateMemberData = async (req, res) => {
           {
             model: User,
             as: 'user',
-            attributes: ['id', 'username', 'email', 'first_name', 'last_name']
+            attributes: ['id', 'username', 'email', 'phone']
+          },
+          {
+            model: State,
+            as: 'state',
+            attributes: ['name']
           }
         ],
-        order: [['registration_date', 'DESC']],
+        order: [['created_at', 'DESC']],
         limit: 100
       })
 
-      // Add computed fields
+      // Add computed fields based on actual schema
       players = players.map(player => ({
         ...player.toJSON(),
-        total_tournaments: Math.floor(Math.random() * 20),
-        current_ranking: Math.floor(Math.random() * 1000) + 1
+        membership_status: player.affiliation_expires_at && new Date(player.affiliation_expires_at) >= new Date() ? 'active' : 'inactive',
+        age: new Date().getFullYear() - new Date(player.birth_date).getFullYear()
       }))
     }
 
@@ -113,42 +113,76 @@ const getStateMemberData = async (req, res) => {
           {
             model: User,
             as: 'user',
-            attributes: ['id', 'username', 'email', 'first_name', 'last_name']
+            attributes: ['id', 'username', 'email', 'phone']
+          },
+          {
+            model: State,
+            as: 'state',
+            attributes: ['name']
           }
         ],
         order: [['created_at', 'DESC']],
         limit: 100
       })
 
-      // Add computed fields
+      // Add computed fields based on actual schema
       coaches = coaches.map(coach => ({
         ...coach.toJSON(),
-        total_students: Math.floor(Math.random() * 50),
-        average_rating: (Math.random() * 2 + 3).toFixed(1)
+        membership_status: coach.affiliation_expires_at && new Date(coach.affiliation_expires_at) >= new Date() ? 'active' : 'inactive',
+        age: new Date().getFullYear() - new Date(coach.birth_date).getFullYear()
       }))
     }
 
     if (!member_type || member_type === 'all' || member_type === 'clubs') {
       clubs = await Club.findAll({
         where: { ...clubWhere, ...clubSearchCondition },
-        order: [['registration_date', 'DESC']],
+        include: [
+          {
+            model: User,
+            as: 'user',
+            attributes: ['id', 'username', 'email', 'phone']
+          },
+          {
+            model: State,
+            as: 'state',
+            attributes: ['name']
+          }
+        ],
+        order: [['created_at', 'DESC']],
         limit: 100
       })
 
-      // Add computed fields
+      // Add computed fields based on actual schema
       clubs = clubs.map(club => ({
         ...club.toJSON(),
-        total_members: Math.floor(Math.random() * 200) + 10,
-        upcoming_tournaments: Math.floor(Math.random() * 5)
+        membership_status: club.affiliation_expires_at && new Date(club.affiliation_expires_at) >= new Date() ? 'active' : 'inactive'
       }))
     }
 
     if (!member_type || member_type === 'all' || member_type === 'partners') {
       partners = await Partner.findAll({
         where: { ...partnerWhere, ...partnerSearchCondition },
+        include: [
+          {
+            model: User,
+            as: 'user',
+            attributes: ['id', 'username', 'email', 'phone']
+          },
+          {
+            model: State,
+            as: 'state',
+            attributes: ['name']
+          }
+        ],
         order: [['created_at', 'DESC']],
         limit: 100
       })
+
+      // Add computed fields based on actual schema
+      partners = partners.map(partner => ({
+        ...partner.toJSON(),
+        membership_status: partner.premium_expires_at && new Date(partner.premium_expires_at) >= new Date() ? 'active' : 'inactive'
+      }))
     }
 
     // Calculate statistics
@@ -157,19 +191,28 @@ const getStateMemberData = async (req, res) => {
     })
 
     const activePlayers = await Player.count({
-      where: { state_id: stateId, membership_status: 'active' }
+      where: { 
+        state_id: stateId,
+        affiliation_expires_at: { [Op.or]: [null, { [Op.gte]: new Date() }] }
+      }
     })
 
-    const suspendedPlayers = await Player.count({
-      where: { state_id: stateId, membership_status: 'suspended' }
+    const inactivePlayers = await Player.count({
+      where: { 
+        state_id: stateId,
+        affiliation_expires_at: { [Op.lt]: new Date() }
+      }
     })
 
     const totalCoaches = await Coach.count({
       where: { state_id: stateId }
     })
 
-    const verifiedCoaches = await Coach.count({
-      where: { state_id: stateId, is_verified: true }
+    const activeCoaches = await Coach.count({
+      where: { 
+        state_id: stateId,
+        affiliation_expires_at: { [Op.or]: [null, { [Op.gte]: new Date() }] }
+      }
     })
 
     const totalClubs = await Club.count({
@@ -177,7 +220,10 @@ const getStateMemberData = async (req, res) => {
     })
 
     const activeClubs = await Club.count({
-      where: { state_id: stateId, is_active: true }
+      where: { 
+        state_id: stateId,
+        affiliation_expires_at: { [Op.or]: [null, { [Op.gte]: new Date() }] }
+      }
     })
 
     const totalPartners = await Partner.count({
@@ -185,78 +231,87 @@ const getStateMemberData = async (req, res) => {
     })
 
     const activePartners = await Partner.count({
-      where: { state_id: stateId, is_active: true }
+      where: { 
+        state_id: stateId,
+        premium_expires_at: { [Op.or]: [null, { [Op.gte]: new Date() }] }
+      }
     })
 
-    // Players by skill level
+    // Players by NRTP skill level
     const playersBySkill = await Player.findAll({
-      where: { state_id: stateId },
+      where: { state_id: stateId, nrtp_level: { [Op.not]: null } },
       attributes: [
-        'skill_level',
+        'nrtp_level',
         [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
       ],
-      group: ['skill_level']
+      group: ['nrtp_level']
     })
 
     const skillLevelCount = {}
     playersBySkill.forEach(item => {
-      skillLevelCount[item.skill_level] = parseInt(item.dataValues.count)
+      skillLevelCount[item.nrtp_level] = parseInt(item.dataValues.count)
     })
 
-    // Coaches by certification
-    const coachesByCert = await Coach.findAll({
-      where: { state_id: stateId },
+    // Coaches by NRTP level (no specific certification field in schema)
+    const coachesByLevel = await Coach.findAll({
+      where: { state_id: stateId, nrtp_level: { [Op.not]: null } },
       attributes: [
-        'certification_level',
+        'nrtp_level',
         [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
       ],
-      group: ['certification_level']
+      group: ['nrtp_level']
     })
 
-    const certLevelCount = {}
-    coachesByCert.forEach(item => {
-      certLevelCount[item.certification_level] = parseInt(item.dataValues.count)
+    const coachLevelCount = {}
+    coachesByLevel.forEach(item => {
+      coachLevelCount[item.nrtp_level] = parseInt(item.dataValues.count)
     })
 
     // Recent registrations (last 30 days)
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
-    const recentRegistrations = await Player.count({
-      where: {
-        state_id: stateId,
-        registration_date: {
-          [Op.gte]: thirtyDaysAgo
-        }
-      }
-    }) + await Coach.count({
+    const recentPlayerRegistrations = await Player.count({
       where: {
         state_id: stateId,
         created_at: {
           [Op.gte]: thirtyDaysAgo
         }
       }
-    }) + await Club.count({
+    })
+
+    const recentCoachRegistrations = await Coach.count({
       where: {
         state_id: stateId,
-        registration_date: {
+        created_at: {
           [Op.gte]: thirtyDaysAgo
         }
       }
     })
 
+    const recentClubRegistrations = await Club.count({
+      where: {
+        state_id: stateId,
+        created_at: {
+          [Op.gte]: thirtyDaysAgo
+        }
+      }
+    })
+
+    const recentRegistrations = recentPlayerRegistrations + recentCoachRegistrations + recentClubRegistrations
+
     const stats = {
       total_players: totalPlayers,
       active_players: activePlayers,
-      suspended_players: suspendedPlayers,
+      inactive_players: inactivePlayers,
       total_coaches: totalCoaches,
-      verified_coaches: verifiedCoaches,
+      active_coaches: activeCoaches,
       total_clubs: totalClubs,
       active_clubs: activeClubs,
       total_partners: totalPartners,
       active_partners: activePartners,
       players_by_skill: skillLevelCount,
-      coaches_by_certification: certLevelCount,
+      coaches_by_level: coachLevelCount,
       recent_registrations: recentRegistrations
     }
 
@@ -274,7 +329,7 @@ const getStateMemberData = async (req, res) => {
   }
 }
 
-// Update player status
+// Update player status (actually updates affiliation expiry)
 const updatePlayerStatus = async (req, res) => {
   try {
     const { playerId } = req.params
@@ -294,13 +349,18 @@ const updatePlayerStatus = async (req, res) => {
     const player = await Player.findOne({
       where: {
         id: playerId,
-        state_id: stateCommittee.id
+        state_id: stateCommittee.state_id
       },
       include: [
         {
           model: User,
           as: 'user',
-          attributes: ['id', 'username', 'email', 'first_name', 'last_name']
+          attributes: ['id', 'username', 'email', 'phone']
+        },
+        {
+          model: State,
+          as: 'state',
+          attributes: ['name']
         }
       ]
     })
@@ -309,12 +369,21 @@ const updatePlayerStatus = async (req, res) => {
       return res.status(404).json({ message: 'Player not found' })
     }
 
-    await player.update({ membership_status: status })
+    // Map status to affiliation expiry date
+    let affiliationExpiresAt
+    if (status === 'active') {
+      affiliationExpiresAt = new Date()
+      affiliationExpiresAt.setFullYear(affiliationExpiresAt.getFullYear() + 1)
+    } else {
+      affiliationExpiresAt = new Date('2020-01-01') // Past date for inactive
+    }
+
+    await player.update({ affiliation_expires_at: affiliationExpiresAt })
 
     const updatedPlayer = {
       ...player.toJSON(),
-      total_tournaments: Math.floor(Math.random() * 20),
-      current_ranking: Math.floor(Math.random() * 1000) + 1
+      membership_status: status,
+      age: new Date().getFullYear() - new Date(player.birth_date).getFullYear()
     }
 
     res.json({
@@ -328,7 +397,7 @@ const updatePlayerStatus = async (req, res) => {
   }
 }
 
-// Update coach verification
+// Update coach verification (actually updates affiliation)
 const updateCoachVerification = async (req, res) => {
   try {
     const { coachId } = req.params
@@ -348,13 +417,18 @@ const updateCoachVerification = async (req, res) => {
     const coach = await Coach.findOne({
       where: {
         id: coachId,
-        state_id: stateCommittee.id
+        state_id: stateCommittee.state_id
       },
       include: [
         {
           model: User,
           as: 'user',
-          attributes: ['id', 'username', 'email', 'first_name', 'last_name']
+          attributes: ['id', 'username', 'email', 'phone']
+        },
+        {
+          model: State,
+          as: 'state',
+          attributes: ['name']
         }
       ]
     })
@@ -363,25 +437,26 @@ const updateCoachVerification = async (req, res) => {
       return res.status(404).json({ message: 'Coach not found' })
     }
 
-    const updateData = {
-      is_verified: verified
-    }
-
+    // Map verification to affiliation expiry date
+    let affiliationExpiresAt
     if (verified) {
-      updateData.verification_date = new Date()
+      affiliationExpiresAt = new Date()
+      affiliationExpiresAt.setFullYear(affiliationExpiresAt.getFullYear() + 1)
+    } else {
+      affiliationExpiresAt = new Date('2020-01-01') // Past date for inactive
     }
 
-    await coach.update(updateData)
+    await coach.update({ affiliation_expires_at: affiliationExpiresAt })
 
     const updatedCoach = {
       ...coach.toJSON(),
-      total_students: Math.floor(Math.random() * 50),
-      average_rating: (Math.random() * 2 + 3).toFixed(1)
+      membership_status: verified ? 'active' : 'inactive',
+      age: new Date().getFullYear() - new Date(coach.birth_date).getFullYear()
     }
 
     res.json({
       coach: updatedCoach,
-      message: 'Coach verification updated successfully'
+      message: 'Coach status updated successfully'
     })
 
   } catch (error) {
@@ -410,20 +485,40 @@ const updateClubStatus = async (req, res) => {
     const club = await Club.findOne({
       where: {
         id: clubId,
-        state_id: stateCommittee.id
-      }
+        state_id: stateCommittee.state_id
+      },
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'username', 'email', 'phone']
+        },
+        {
+          model: State,
+          as: 'state',
+          attributes: ['name']
+        }
+      ]
     })
 
     if (!club) {
       return res.status(404).json({ message: 'Club not found' })
     }
 
-    await club.update({ is_active })
+    // Map status to affiliation expiry date
+    let affiliationExpiresAt
+    if (is_active) {
+      affiliationExpiresAt = new Date()
+      affiliationExpiresAt.setFullYear(affiliationExpiresAt.getFullYear() + 1)
+    } else {
+      affiliationExpiresAt = new Date('2020-01-01') // Past date for inactive
+    }
+
+    await club.update({ affiliation_expires_at: affiliationExpiresAt })
 
     const updatedClub = {
       ...club.toJSON(),
-      total_members: Math.floor(Math.random() * 200) + 10,
-      upcoming_tournaments: Math.floor(Math.random() * 5)
+      membership_status: is_active ? 'active' : 'inactive'
     }
 
     res.json({
@@ -457,18 +552,44 @@ const updatePartnerStatus = async (req, res) => {
     const partner = await Partner.findOne({
       where: {
         id: partnerId,
-        state_id: stateCommittee.id
-      }
+        state_id: stateCommittee.state_id
+      },
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'username', 'email', 'phone']
+        },
+        {
+          model: State,
+          as: 'state',
+          attributes: ['name']
+        }
+      ]
     })
 
     if (!partner) {
       return res.status(404).json({ message: 'Partner not found' })
     }
 
-    await partner.update({ is_active })
+    // Map status to premium expiry date
+    let premiumExpiresAt
+    if (is_active) {
+      premiumExpiresAt = new Date()
+      premiumExpiresAt.setFullYear(premiumExpiresAt.getFullYear() + 1)
+    } else {
+      premiumExpiresAt = new Date('2020-01-01') // Past date for inactive
+    }
+
+    await partner.update({ premium_expires_at: premiumExpiresAt })
+
+    const updatedPartner = {
+      ...partner.toJSON(),
+      membership_status: is_active ? 'active' : 'inactive'
+    }
 
     res.json({
-      partner,
+      partner: updatedPartner,
       message: 'Partner status updated successfully'
     })
 

@@ -67,7 +67,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: 'pending',
       validate: {
-        isIn: [['pending', 'completed', 'failed', 'refunded', 'cancelled']]
+        isIn: [['pending', 'completed', 'failed', 'refunded']]
       }
     },
     transaction_date: {
