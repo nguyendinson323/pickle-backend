@@ -73,6 +73,7 @@ const updateProfile = async (req, res) => {
       curp,
       nrtp_level,
       profile_photo_url,
+      id_document_url,
       nationality,
       club_id
     } = req.body
@@ -94,6 +95,7 @@ const updateProfile = async (req, res) => {
     if (curp !== undefined) updateData.curp = curp
     if (nrtp_level !== undefined) updateData.nrtp_level = nrtp_level
     if (profile_photo_url !== undefined) updateData.profile_photo_url = profile_photo_url
+    if (id_document_url !== undefined) updateData.id_document_url = id_document_url
     if (nationality !== undefined) updateData.nationality = nationality
     if (club_id !== undefined) updateData.club_id = club_id
 
