@@ -6,6 +6,7 @@ const clubCourtsController = require('../controllers/clubCourtsController')
 const clubMembersController = require('../controllers/clubMembersController')
 const clubTournamentsController = require('../controllers/clubTournamentsController')
 const clubMicrositeController = require('../controllers/clubMicrositeController')
+const clubMembershipController = require('../controllers/clubMembershipController')
 
 // ==================== COURTS ROUTES ====================
 
@@ -239,6 +240,55 @@ router.post('/microsite/unpublish',
   authenticate, 
   authorize('club'), 
   clubMicrositeController.unpublishMicrosite
+)
+
+// ==================== MEMBERSHIP ROUTES ====================
+
+// Get available club subscription plans (public endpoint)
+router.get('/subscription-plans', 
+  clubMembershipController.getAvailableClubPlans
+)
+
+// Get club membership data
+router.get('/membership', 
+  authenticate, 
+  authorize('club'), 
+  clubMembershipController.getClubMembershipData
+)
+
+// Subscribe to a plan
+router.post('/membership/subscribe', 
+  authenticate, 
+  authorize('club'), 
+  clubMembershipController.subscribeToPlan
+)
+
+// Cancel subscription
+router.post('/membership/cancel', 
+  authenticate, 
+  authorize('club'), 
+  clubMembershipController.cancelSubscription
+)
+
+// Renew subscription
+router.post('/membership/renew', 
+  authenticate, 
+  authorize('club'), 
+  clubMembershipController.renewSubscription
+)
+
+// Update payment method
+router.put('/membership/payment-method', 
+  authenticate, 
+  authorize('club'), 
+  clubMembershipController.updatePaymentMethod
+)
+
+// Change subscription plan
+router.put('/membership/change-plan', 
+  authenticate, 
+  authorize('club'), 
+  clubMembershipController.changePlan
 )
 
 module.exports = router

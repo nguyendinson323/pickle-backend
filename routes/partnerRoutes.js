@@ -8,6 +8,7 @@ const partnerMicrositeController = require('../controllers/partnerMicrositeContr
 const partnerStatisticsController = require('../controllers/partnerStatisticsController')
 const partnerDocumentsController = require('../controllers/partnerDocumentsController')
 const partnerManagementController = require('../controllers/partnerManagementController')
+const partnerMembershipController = require('../controllers/partnerMembershipController')
 
 // ==================== PROFILE ROUTES ====================
 
@@ -231,10 +232,59 @@ router.post('/tournaments/:tournamentId/publish',
   partnerManagementController.publishTournament
 )
 
-router.post('/tournaments/:tournamentId/cancel', 
-  authenticate, 
-  authorize('partner'), 
+router.post('/tournaments/:tournamentId/cancel',
+  authenticate,
+  authorize('partner'),
   partnerManagementController.cancelTournament
+)
+
+// ==================== MEMBERSHIP ROUTES ====================
+
+// Get available partner subscription plans (public endpoint)
+router.get('/subscription-plans',
+  partnerMembershipController.getAvailablePartnerPlans
+)
+
+// Get partner membership data
+router.get('/membership',
+  authenticate,
+  authorize('partner'),
+  partnerMembershipController.getPartnerMembershipData
+)
+
+// Subscribe to a plan
+router.post('/membership/subscribe',
+  authenticate,
+  authorize('partner'),
+  partnerMembershipController.subscribeToPartnerPlan
+)
+
+// Cancel subscription
+router.post('/membership/cancel',
+  authenticate,
+  authorize('partner'),
+  partnerMembershipController.cancelPartnerSubscription
+)
+
+// Renew subscription
+router.post('/membership/renew',
+  authenticate,
+  authorize('partner'),
+  partnerMembershipController.renewPartnerSubscription
+)
+
+// Update payment method
+router.put('/membership/payment-method',
+  authenticate,
+  authorize('partner'),
+  partnerMembershipController.updatePartnerPaymentMethod
+)
+
+// Change subscription plan
+router.put('/membership/change-plan',
+  authenticate,
+  authorize('partner'),
+  partnerMembershipController.changePartnerPlan
 )
 
 module.exports = router

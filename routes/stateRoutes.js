@@ -9,6 +9,7 @@ const stateStatisticsController = require('../controllers/stateStatisticsControl
 const stateDocumentsController = require('../controllers/stateDocumentsController')
 const stateMemberManagementController = require('../controllers/stateMemberManagementController')
 const stateDashboardController = require('../controllers/stateDashboardController')
+const stateMembershipController = require('../controllers/stateMembershipController')
 
 // ==================== DASHBOARD ROUTES ====================
 
@@ -269,10 +270,45 @@ router.put('/clubs/:clubId/status',
 )
 
 // Update partner status
-router.put('/partners/:partnerId/status', 
-  authenticate, 
-  authorize(['state']), 
+router.put('/partners/:partnerId/status',
+  authenticate,
+  authorize(['state']),
   stateMemberManagementController.updatePartnerStatus
+)
+
+// ==================== MEMBERSHIP ROUTES ====================
+
+// Get affiliation requirements (public endpoint)
+router.get('/affiliation/requirements',
+  stateMembershipController.getAffiliationRequirements
+)
+
+// Get state membership/affiliation data
+router.get('/membership',
+  authenticate,
+  authorize(['state']),
+  stateMembershipController.getStateMembershipData
+)
+
+// Renew state affiliation
+router.post('/membership/renew',
+  authenticate,
+  authorize(['state']),
+  stateMembershipController.renewStateAffiliation
+)
+
+// Submit compliance report
+router.post('/membership/compliance-report',
+  authenticate,
+  authorize(['state']),
+  stateMembershipController.submitComplianceReport
+)
+
+// Update state committee information
+router.put('/membership/info',
+  authenticate,
+  authorize(['state']),
+  stateMembershipController.updateStateCommitteeInfo
 )
 
 module.exports = router
