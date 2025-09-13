@@ -1,0 +1,13 @@
+id,username,email,phone,role,status,verified,premium,searchable,created_at,last_login,state,profile_name,profile_type
+"10","deportes_mx","ventas@deportesmx.com","+52 55 6666 4444","partner","active","true","false","true",""2025-09-12T21:30:22.362Z"",""2024-01-07T14:10:00.000Z"","Mexico City","Deportes Mexico Sports Equipment","partner"
+"9","hotel_riviera","reservas@hotelriviera.com","+52 998 333 7777","partner","active","true","true","true",""2025-09-12T21:30:22.362Z"",""2024-01-08T10:45:00.000Z"","Quintana Roo","Hotel Riviera Maya Resort & Spa","partner"
+"7","club_azteca","info@clubazteca.com","+52 55 1111 9999","club","active","true","true","true",""2025-09-12T21:30:22.362Z"",""2024-01-13T08:00:00.000Z"","Mexico City","Club Pickleball Azteca","club"
+"3","carlos_rodriguez","carlos.rodriguez@email.com","+52 33 1234 9876","player","active","true","true","true",""2025-09-12T21:30:22.362Z"",""2024-01-12T15:45:00.000Z"","Jalisco","Carlos Antonio Rodriguez Lopez","player"
+"1","admin_mexico","admin@pickleballmexico.org","+52 55 1234 5678","admin","active","true","true","false",""2025-09-12T21:30:22.362Z"",""2025-09-13T10:49:21.583Z"","Unknown","N/A","admin"
+"4","ana_martinez","ana.martinez@email.com","+52 81 5555 1234","player","active","false","false","true",""2025-09-12T21:30:22.362Z"",,"Nuevo Leon","Ana Sofia Martinez Ruiz","player"
+"8","club_guadalajara","contacto@clubguadalajara.com","+52 33 2222 8888","club","active","true","false","true",""2025-09-12T21:30:22.362Z"",""2024-01-09T16:20:00.000Z"","Jalisco","Club Deportivo Guadalajara Pickleball","club"
+"2","maria_gonzalez","maria.gonzalez@email.com","+52 55 9876 5432","player","active","true","false","false",""2025-09-12T21:30:22.362Z"",""2025-09-12T22:14:13.104Z"","Mexico City","Maria Elena Gonzalez Hernandez","player"
+"12","estado_jalisco","comite@pickleballjalisco.org","+52 33 5555 6666","state","active","true","true","false",""2025-09-12T21:30:22.362Z"",""2024-01-12T09:00:00.000Z"","Jalisco","Jalisco State Pickleball Committee","state"
+"11","estado_cdmx","comite@pickleballcdmx.org","+52 55 7777 3333","state","active","true","true","false",""2025-09-12T21:30:22.362Z"",""2024-01-14T12:25:00.000Z"","Mexico City","Mexico City State Pickleball Committee","state"
+"6","coach_sofia","sofia.coach@email.com","+52 33 8888 2222","coach","active","true","false","true",""2025-09-12T21:30:22.362Z"",""2024-01-11T11:30:00.000Z"","Jalisco","Sofia Isabel Ramirez Mendoza","coach"
+"5","coach_miguel","miguel.coach@email.com","+52 55 4444 7777","coach","active","true","true","true",""2025-09-12T21:30:22.362Z"",""2025-09-12T21:32:16.609Z"","Mexico City","Miguel Angel Fernandez Castro","coach"

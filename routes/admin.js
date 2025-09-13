@@ -16,6 +16,11 @@ const { authorize } = require('../middlewares/authorizationMiddleware')
 // Testing route without auth for court API development
 router.get('/courts-test', adminCourtsController.getCourts)
 router.get('/courts-test/:id', adminCourtsController.getCourtDetails)
+router.get('/reservations-test', adminCourtsController.getCourtReservations)
+
+// Testing routes without auth for messaging API development
+router.get('/messaging-templates-test', adminMessagingController.getTemplates)
+router.get('/messaging-sent-test', adminMessagingController.getSentMessages)
 
 router.use(authenticate)
 router.use(authorize('admin'))

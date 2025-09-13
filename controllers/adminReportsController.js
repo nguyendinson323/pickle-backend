@@ -181,33 +181,33 @@ const generateUsersReport = async (filters, fields) => {
   const users = await User.findAll({
     where: whereClause,
     include: [
-      { 
-        model: Player, 
-        as: 'playerProfile', 
+      {
+        model: Player,
+        as: 'player',
         required: false,
         include: [{ model: State, as: 'state', attributes: ['name'] }]
       },
-      { 
-        model: Coach, 
-        as: 'coachProfile', 
+      {
+        model: Coach,
+        as: 'coach',
         required: false,
         include: [{ model: State, as: 'state', attributes: ['name'] }]
       },
-      { 
-        model: Club, 
-        as: 'clubProfile', 
+      {
+        model: Club,
+        as: 'club',
         required: false,
         include: [{ model: State, as: 'state', attributes: ['name'] }]
       },
-      { 
-        model: Partner, 
-        as: 'partnerProfile', 
+      {
+        model: Partner,
+        as: 'partner',
         required: false,
         include: [{ model: State, as: 'state', attributes: ['name'] }]
       },
-      { 
-        model: StateCommittee, 
-        as: 'stateProfile', 
+      {
+        model: StateCommittee,
+        as: 'stateCommittee',
         required: false,
         include: [{ model: State, as: 'state', attributes: ['name'] }]
       }
@@ -216,7 +216,7 @@ const generateUsersReport = async (filters, fields) => {
   })
 
   return users.map(user => {
-    const profile = user.playerProfile || user.coachProfile || user.clubProfile || user.partnerProfile || user.stateProfile
+    const profile = user.player || user.coach || user.club || user.partner || user.stateCommittee
     
     return {
       id: user.id,

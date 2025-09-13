@@ -21,7 +21,7 @@ module.exports = {
       },
       tournament_id: {
         type: Sequelize.INTEGER,
-        allowNull: false,
+        allowNull: true,
         references: {
           model: 'tournaments',
           key: 'id'

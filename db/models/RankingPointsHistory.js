@@ -13,7 +13,8 @@ module.exports = (sequelize, DataTypes) => {
       RankingPointsHistory.belongsTo(models.Tournament, {
         foreignKey: 'tournament_id',
         as: 'tournament',
-        onDelete: 'CASCADE'
+        onDelete: 'CASCADE',
+        allowNull: true
       });
       RankingPointsHistory.belongsTo(models.TournamentCategory, {
         foreignKey: 'category_id',
@@ -41,7 +42,7 @@ module.exports = (sequelize, DataTypes) => {
     },
     tournament_id: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: 'tournaments',
         key: 'id'
