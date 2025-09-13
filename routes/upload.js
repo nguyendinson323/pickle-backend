@@ -22,6 +22,12 @@ router.post('/partner-logo', authenticate, upload, uploadPartnerLogo)
 // Upload admin photo - protected route
 router.post('/admin-photo', authenticate, upload, uploadAdminPhoto)
 
+// Upload player assets - protected routes for existing players
+router.post('/player-photo', authenticate, upload, uploadPlayerPhoto)
+router.post('/player-document', authenticate, upload, uploadPlayerDocument)
+router.post('/coach-photo', authenticate, upload, uploadCoachPhoto)
+router.post('/coach-document', authenticate, upload, uploadCoachDocument)
+
 // Registration upload routes - public routes
 router.post('/club-logo-registration', upload, uploadClubLogo)
 router.post('/player-photo-registration', upload, uploadPlayerPhoto)

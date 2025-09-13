@@ -69,7 +69,13 @@ const uploadClubLogo = async (req, res) => {
 
 const uploadPlayerPhoto = async (req, res) => {
   try {
+    console.log('🔄 Player photo upload request received')
+    console.log('📁 File:', req.file ? 'File present' : 'No file')
+    console.log('👤 User:', req.user ? `User ID: ${req.user.id}` : 'No user')
+    console.log('📋 Headers:', req.headers.authorization ? 'Auth header present' : 'No auth header')
+
     if (!req.file) {
+      console.log('❌ Upload failed: No file provided')
       return res.status(400).json({ message: 'No file provided' })
     }
 

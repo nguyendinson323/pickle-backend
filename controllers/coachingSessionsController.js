@@ -102,10 +102,16 @@ const coachingSessionsController = {
               const end = new Date(`1970-01-01T${availability.end_time}`);
               const durationMinutes = (end - start) / (1000 * 60);
               
-              const sessionId = `${coachData.id}_${dateStr}_${availability.start_time}`.replace(/[:-]/g, '');
-              
+              // Create a more predictable session ID that can be used for booking
+              const sessionIdString = `${coachData.id}_${dateStr}_${availability.start_time}`.replace(/[:-]/g, '_');
+              const hashCode = sessionIdString.split('').reduce((a, b) => {
+                a = ((a << 5) - a) + b.charCodeAt(0);
+                return a & a;
+              }, 0);
+              const sessionId = Math.abs(hashCode);
+
               availableSessions.push({
-                id: parseInt(sessionId.substring(0, 10)), // Create unique ID
+                id: sessionId,
                 coach_id: coachData.id,
                 player_id: null,
                 session_type: 'individual',
