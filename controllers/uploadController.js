@@ -316,9 +316,52 @@ const uploadCoachDocument = async (req, res) => {
 
   } catch (error) {
     console.error('Upload error:', error)
-    res.status(500).json({ 
-      message: 'Upload failed', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Upload failed',
+      error: error.message
+    })
+  }
+}
+
+const uploadAdminPhoto = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file provided' })
+    }
+
+    // Upload to Cloudinary
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        {
+          folder: 'admin_photos',
+          transformation: [
+            { width: 300, height: 300, crop: 'fill', quality: 'auto' },
+            { radius: 'max' } // Makes it circular
+          ],
+          format: 'png'
+        },
+        (error, result) => {
+          if (error) {
+            reject(error)
+          } else {
+            resolve(result)
+          }
+        }
+      ).end(req.file.buffer)
+    })
+
+    res.json({
+      secure_url: result.secure_url,
+      public_id: result.public_id,
+      width: result.width,
+      height: result.height
+    })
+
+  } catch (error) {
+    console.error('Upload error:', error)
+    res.status(500).json({
+      message: 'Upload failed',
+      error: error.message
     })
   }
 }
@@ -331,5 +374,6 @@ module.exports = {
   uploadStateLogo,
   uploadPartnerLogo,
   uploadCoachPhoto,
-  uploadCoachDocument
+  uploadCoachDocument,
+  uploadAdminPhoto
 }

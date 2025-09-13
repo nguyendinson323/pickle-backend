@@ -223,9 +223,11 @@ const getTournamentParticipants = async (req, res) => {
         },
         {
           model: Player,
+          as: 'player',
           attributes: ['id', 'full_name'],
           include: [{
             model: User,
+            as: 'user',
             attributes: ['id', 'username', 'email', 'role'],
             required: true
           }],
@@ -233,6 +235,7 @@ const getTournamentParticipants = async (req, res) => {
         },
         {
           model: TournamentCategory,
+          as: 'category',
           attributes: ['id', 'name', 'gender', 'min_skill_level', 'max_skill_level'],
           required: false
         }
@@ -245,15 +248,15 @@ const getTournamentParticipants = async (req, res) => {
     const transformedParticipants = registrations.map(registration => ({
       id: registration.id,
       tournament_id: registration.tournament_id,
-      user_id: registration.Player.User.id,
-      user_name: registration.Player.full_name || registration.Player.User.username,
-      user_type: registration.Player.User.role,
+      user_id: registration.player.user.id,
+      user_name: registration.player.full_name || registration.player.user.username,
+      user_type: registration.player.user.role,
       registration_date: registration.registration_date,
       status: registration.status,
       seed: null,
       payment_status: registration.payment_status || 'pending',
       amount_paid: registration.amount_paid || 0,
-      category_name: registration.TournamentCategory?.name || 'General'
+      category_name: registration.category?.name || 'General'
     }))
 
     res.json(transformedParticipants)
@@ -289,9 +292,11 @@ const getAllParticipants = async (req, res) => {
         },
         {
           model: Player,
+          as: 'player',
           attributes: ['id', 'full_name'],
           include: [{
             model: User,
+            as: 'user',
             attributes: ['id', 'username', 'email', 'role'],
             required: true
           }],
@@ -299,6 +304,7 @@ const getAllParticipants = async (req, res) => {
         },
         {
           model: TournamentCategory,
+          as: 'category',
           attributes: ['id', 'name'],
           required: false
         }
@@ -310,9 +316,9 @@ const getAllParticipants = async (req, res) => {
     const transformedParticipants = registrations.map(registration => ({
       id: registration.id,
       tournament_id: registration.tournament_id,
-      user_id: registration.Player.User.id,
-      user_name: registration.Player.full_name || registration.Player.User.username,
-      user_type: registration.Player.User.role,
+      user_id: registration.player.user.id,
+      user_name: registration.player.full_name || registration.player.user.username,
+      user_type: registration.player.user.role,
       registration_date: registration.registration_date,
       status: registration.status,
       seed: null,

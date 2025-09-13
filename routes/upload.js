@@ -1,14 +1,15 @@
 const express = require('express')
 const router = express.Router()
-const { 
-  upload, 
-  uploadClubLogo, 
-  uploadPlayerPhoto, 
-  uploadPlayerDocument, 
+const {
+  upload,
+  uploadClubLogo,
+  uploadPlayerPhoto,
+  uploadPlayerDocument,
   uploadStateLogo,
   uploadPartnerLogo,
   uploadCoachPhoto,
-  uploadCoachDocument
+  uploadCoachDocument,
+  uploadAdminPhoto
 } = require('../controllers/uploadController')
 const { authenticate } = require('../middlewares/authMiddleware')
 
@@ -17,6 +18,9 @@ router.post('/club-logo', authenticate, upload, uploadClubLogo)
 
 // Upload partner logo - protected route
 router.post('/partner-logo', authenticate, upload, uploadPartnerLogo)
+
+// Upload admin photo - protected route
+router.post('/admin-photo', authenticate, upload, uploadAdminPhoto)
 
 // Registration upload routes - public routes
 router.post('/club-logo-registration', upload, uploadClubLogo)

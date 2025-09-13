@@ -1,173 +1,6 @@
 const { User, Player, Coach, Club, Partner, StateCommittee, State, Message, MessageRecipient, MessageAttachment, MessageTemplate } = require('../db/models')
 const { Op } = require('sequelize')
 
-// Get message templates
-const getTemplates = async (req, res) => {
-  try {
-    // Check if MessageTemplate model exists, otherwise use predefined templates
-    if (MessageTemplate) {
-      const templates = await MessageTemplate.findAll({
-        where: { is_active: true },
-        include: [{
-          model: User,
-          as: 'creator',
-          attributes: ['id', 'username']
-        }],
-        order: [['created_at', 'DESC']]
-      })
-      
-      res.json(templates)
-    } else {
-      // Fallback to predefined templates if MessageTemplate model doesn't exist
-      const templates = [
-        {
-          id: 1,
-          name: 'Tournament Announcement',
-          subject: 'New Tournament Available',
-          body: 'Dear {{name}}, a new tournament {{tournament_name}} is now available for registration.',
-          created_at: new Date().toISOString()
-        },
-        {
-          id: 2,
-          name: 'Membership Renewal',
-          subject: 'Membership Renewal Required',
-          body: 'Hello {{name}}, your membership expires on {{expiry_date}}. Please renew to continue access.',
-          created_at: new Date().toISOString()
-        },
-        {
-          id: 3,
-          name: 'System Maintenance',
-          subject: 'Scheduled System Maintenance',
-          body: 'Dear users, we will be performing system maintenance on {{date}} from {{start_time}} to {{end_time}}.',
-          created_at: new Date().toISOString()
-        },
-        {
-          id: 4,
-          name: 'Welcome Message',
-          subject: 'Welcome to Pickleball Federation',
-          body: 'Welcome {{name}}! Thank you for joining our pickleball community.',
-          created_at: new Date().toISOString()
-        },
-        {
-          id: 5,
-          name: 'Event Reminder',
-          subject: 'Event Reminder',
-          body: 'This is a reminder about the upcoming event {{event_name}} on {{event_date}}.',
-          created_at: new Date().toISOString()
-        }
-      ]
-
-      res.json(templates)
-    }
-  } catch (error) {
-    console.error('Error fetching message templates:', error)
-    res.status(500).json({ message: 'Failed to fetch message templates' })
-  }
-}
-
-// Get sent messages with filters
-const getSentMessages = async (req, res) => {
-  try {
-    // For now, return sample data since we need message seeding data
-    // In a real implementation, this would query the messages table
-    const sampleMessages = [
-      {
-        id: 1,
-        subject: 'Welcome to Mexican Pickleball Federation',
-        body: 'Dear members, welcome to our amazing pickleball community! We are excited to have you join us for tournaments, training, and networking events.',
-        recipients: ['players', 'coaches'],
-        recipient_count: 145,
-        sent_at: '2024-02-20T10:00:00.000Z',
-        sent_by: 'admin_mexico',
-        status: 'sent',
-        delivery_stats: {
-          delivered: 123,
-          failed: 2,
-          pending: 20
-        }
-      },
-      {
-        id: 2,
-        subject: 'Tournament Registration Now Open',
-        body: 'Registration is now open for the National Pickleball Championship 2024. Don\'t miss this opportunity to compete with the best players in Mexico!',
-        recipients: ['players'],
-        recipient_count: 87,
-        sent_at: '2024-02-18T14:30:00.000Z',
-        sent_by: 'admin_mexico',
-        status: 'sent',
-        delivery_stats: {
-          delivered: 85,
-          failed: 0,
-          pending: 2
-        }
-      },
-      {
-        id: 3,
-        subject: 'Court Maintenance Schedule',
-        body: 'Important notice: Several courts will undergo maintenance this week. Please check the updated schedule on our website.',
-        recipients: ['clubs', 'partners'],
-        recipient_count: 23,
-        sent_at: '2024-02-15T09:15:00.000Z',
-        sent_by: 'admin_mexico',
-        status: 'sent',
-        delivery_stats: {
-          delivered: 20,
-          failed: 1,
-          pending: 2
-        }
-      },
-      {
-        id: 4,
-        subject: 'New Coach Certification Program',
-        body: 'We are launching a new certification program for pickleball coaches. Applications are now being accepted for the first cohort.',
-        recipients: ['coaches'],
-        recipient_count: 34,
-        sent_at: '2024-02-12T16:45:00.000Z',
-        sent_by: 'admin_mexico',
-        status: 'sent',
-        delivery_stats: {
-          delivered: 32,
-          failed: 0,
-          pending: 2
-        }
-      },
-      {
-        id: 5,
-        subject: 'Federation Annual Meeting',
-        body: 'You are invited to attend the annual federation meeting where we will discuss important updates and future plans.',
-        recipients: ['all'],
-        recipient_count: 289,
-        sent_at: '2024-02-10T11:20:00.000Z',
-        sent_by: 'admin_mexico',
-        status: 'sent',
-        delivery_stats: {
-          delivered: 260,
-          failed: 5,
-          pending: 24
-        }
-      }
-    ]
-
-    const stats = {
-      totalSent: 5,
-      totalDelivered: 520,
-      totalFailed: 8,
-      totalPending: 50,
-      emailsSent: 578,
-      smsSent: 0,
-      inAppSent: 578
-    }
-
-    res.json({
-      messages: sampleMessages,
-      stats
-    })
-  } catch (error) {
-    console.error('Error fetching sent messages:', error)
-    res.status(500).json({ message: 'Failed to fetch sent messages' })
-  }
-}
-
 // Create message template
 const createTemplate = async (req, res) => {
   try {
@@ -580,6 +413,169 @@ const getMessageDeliveryReport = async (req, res) => {
   } catch (error) {
     console.error('Error getting delivery report:', error)
     res.status(500).json({ message: 'Failed to get delivery report' })
+  }
+}
+
+// Get message templates
+const getTemplates = async (_, res) => {
+  try {
+    if (MessageTemplate) {
+      const templates = await MessageTemplate.findAll({
+        where: { is_active: true },
+        include: [{
+          model: User,
+          as: 'creator',
+          attributes: ['id', 'username']
+        }],
+        order: [['created_at', 'DESC']],
+        limit: 100
+      })
+
+      res.json(templates)
+    } else {
+      // Fallback with mock data if MessageTemplate model doesn't exist
+      const mockTemplates = [
+        {
+          id: 1,
+          name: 'Welcome Message',
+          subject: 'Welcome to Pickleball Federation',
+          body: 'Welcome to our platform! We are excited to have you join our pickleball community.',
+          is_active: true,
+          created_at: new Date().toISOString(),
+          creator: {
+            id: 1,
+            username: 'admin'
+          }
+        },
+        {
+          id: 2,
+          name: 'Tournament Announcement',
+          subject: 'Upcoming Tournament Registration',
+          body: 'Registration is now open for the upcoming tournament. Don\'t miss your chance to participate!',
+          is_active: true,
+          created_at: new Date().toISOString(),
+          creator: {
+            id: 1,
+            username: 'admin'
+          }
+        }
+      ]
+
+      res.json(mockTemplates)
+    }
+  } catch (error) {
+    console.error('Error fetching message templates:', error)
+    res.status(500).json({ message: 'Failed to fetch message templates' })
+  }
+}
+
+// Get sent messages
+const getSentMessages = async (req, res) => {
+  try {
+    const {
+      recipientType,
+      dateFrom,
+      dateTo,
+      searchTerm
+    } = req.query
+
+    // Build filter conditions
+    const whereConditions = {}
+
+    if (searchTerm) {
+      whereConditions[Op.or] = [
+        { subject: { [Op.iLike]: `%${searchTerm}%` } },
+        { content: { [Op.iLike]: `%${searchTerm}%` } }
+      ]
+    }
+
+    if (dateFrom || dateTo) {
+      whereConditions.sent_at = {}
+      if (dateFrom) {
+        whereConditions.sent_at[Op.gte] = new Date(dateFrom)
+      }
+      if (dateTo) {
+        whereConditions.sent_at[Op.lte] = new Date(dateTo + 'T23:59:59')
+      }
+    }
+
+    const messages = await Message.findAll({
+      where: whereConditions,
+      include: [
+        {
+          model: User,
+          as: 'sender',
+          attributes: ['id', 'username']
+        },
+        {
+          model: MessageRecipient,
+          as: 'recipients',
+          include: [{
+            model: User,
+            as: 'recipient',
+            attributes: ['role']
+          }]
+        }
+      ],
+      order: [['sent_at', 'DESC']],
+      limit: 100
+    })
+
+    // Transform data for frontend
+    const transformedMessages = messages.map(message => {
+      const recipientRoles = [...new Set(message.recipients.map(r => r.recipient.role))]
+      const totalRecipients = message.recipients.length
+      const delivered = message.recipients.filter(r => r.is_read).length
+      const pending = totalRecipients - delivered
+
+      return {
+        id: message.id,
+        subject: message.subject,
+        body: message.content,
+        recipients: recipientRoles,
+        recipient_count: totalRecipients,
+        sent_at: message.sent_at,
+        sent_by: message.sender.username,
+        status: 'sent',
+        delivery_stats: {
+          delivered,
+          failed: 0,
+          pending
+        }
+      }
+    })
+
+    // Filter by recipient type if specified
+    let filteredMessages = transformedMessages
+    if (recipientType && recipientType !== 'all') {
+      filteredMessages = transformedMessages.filter(message =>
+        message.recipients.includes(recipientType)
+      )
+    }
+
+    // Calculate stats
+    const totalSent = filteredMessages.length
+    const totalDelivered = filteredMessages.reduce((sum, msg) => sum + msg.delivery_stats.delivered, 0)
+    const totalPending = filteredMessages.reduce((sum, msg) => sum + msg.delivery_stats.pending, 0)
+    const totalFailed = 0
+
+    const stats = {
+      totalSent,
+      totalDelivered,
+      totalFailed,
+      totalPending,
+      emailsSent: totalSent, // Assuming all messages are sent via email
+      smsSent: 0, // SMS not implemented yet
+      inAppSent: totalSent // All messages are in-app notifications
+    }
+
+    res.json({
+      messages: filteredMessages,
+      stats
+    })
+  } catch (error) {
+    console.error('Error fetching sent messages:', error)
+    res.status(500).json({ message: 'Failed to fetch sent messages' })
   }
 }
 

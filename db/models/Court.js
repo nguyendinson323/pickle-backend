@@ -110,7 +110,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: 'active',
       validate: {
-        isIn: [['active', 'maintenance', 'inactive']]
+        isIn: [['active', 'maintenance', 'inactive', 'pending']]
       }
     }
   }, {

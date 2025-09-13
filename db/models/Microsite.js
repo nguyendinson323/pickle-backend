@@ -18,28 +18,19 @@ module.exports = (sequelize, DataTypes) => {
       Microsite.belongsTo(models.Club, {
         foreignKey: 'owner_id',
         constraints: false,
-        as: 'ownerClub',
-        scope: {
-          owner_type: 'club'
-        }
+        as: 'ownerClub'
       });
-      
+
       Microsite.belongsTo(models.Partner, {
         foreignKey: 'owner_id',
         constraints: false,
-        as: 'ownerPartner',
-        scope: {
-          owner_type: 'partner'
-        }
+        as: 'ownerPartner'
       });
-      
+
       Microsite.belongsTo(models.StateCommittee, {
         foreignKey: 'owner_id',
         constraints: false,
-        as: 'ownerState',
-        scope: {
-          owner_type: 'state'
-        }
+        as: 'ownerState'
       });
     }
   }

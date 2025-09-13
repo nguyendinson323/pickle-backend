@@ -188,16 +188,16 @@ const getCourtReservations = async (req, res) => {
     }
 
     if (userId) {
-      whereConditions.user_id = parseInt(userId)
+      whereConditions.player_id = parseInt(userId)
     }
 
     if (dateFrom || dateTo) {
-      whereConditions.start_time = {}
+      whereConditions.date = {}
       if (dateFrom) {
-        whereConditions.start_time[Op.gte] = new Date(dateFrom)
+        whereConditions.date[Op.gte] = dateFrom
       }
       if (dateTo) {
-        whereConditions.start_time[Op.lte] = new Date(dateTo + 'T23:59:59')
+        whereConditions.date[Op.lte] = dateTo
       }
     }
 
@@ -261,6 +261,7 @@ const getCourtDetails = async (req, res) => {
       include: [
         {
           model: State,
+          as: 'state',
           attributes: ['id', 'name', 'short_code']
         }
       ]
@@ -544,8 +545,8 @@ const exportCourts = async (req, res) => {
     const courtsData = await getCourtsData(filters)
 
     // In a real implementation, generate actual file based on format
-    const mockFileContent = `Court Name,Owner,Location,Surface,Rate,Status,Reservations,Revenue\n${courtsData.map(court => 
-      `${court.name},"${court.club_name || court.partner_name || 'Independent'}","${court.location.city}, ${court.location.state}",${court.surface_type},${court.hourly_rate},${court.status},${court.total_reservations},${court.revenue_generated}`
+    const mockFileContent = `Court Name,Owner,Location,Surface,Status,Reservations,Revenue\n${courtsData.map(court =>
+      `${court.name},"${court.club_name || court.partner_name || 'Independent'}","${court.location?.city || 'N/A'}, ${court.location?.state || 'N/A'}",${court.surface_type || 'N/A'},${court.status},${court.total_reservations},${court.revenue_generated}`
     ).join('\n')}`
 
     res.setHeader('Content-Type', format === 'csv' ? 'text/csv' : 'application/octet-stream')
@@ -571,13 +572,14 @@ const getCourtUtilizationReport = async (req, res) => {
     const reservations = await CourtReservation.findAll({
       where: {
         ...whereCondition,
-        start_time: {
+        date: {
           [Op.gte]: new Date(new Date().setDate(new Date().getDate() - 30)) // Last 30 days
         }
       },
       include: [
         {
           model: Court,
+          as: 'court',
           attributes: ['id', 'name']
         }
       ]
@@ -589,17 +591,21 @@ const getCourtUtilizationReport = async (req, res) => {
       if (!acc[courtId]) {
         acc[courtId] = {
           courtId,
-          courtName: reservation.Court.name,
+          courtName: reservation.court.name,
           totalHours: 0,
           totalReservations: 0,
           revenue: 0
         }
       }
 
-      const duration = (new Date(reservation.end_time) - new Date(reservation.start_time)) / (1000 * 60 * 60)
+      // Parse time strings correctly
+      const startTime = new Date(`${reservation.date}T${reservation.start_time}`)
+      const endTime = new Date(`${reservation.date}T${reservation.end_time}`)
+      const duration = (endTime - startTime) / (1000 * 60 * 60)
+
       acc[courtId].totalHours += duration
       acc[courtId].totalReservations += 1
-      acc[courtId].revenue += reservation.amount_paid || 0
+      acc[courtId].revenue += (reservation.payment_status === 'paid' ? parseFloat(reservation.amount) : 0)
 
       return acc
     }, {})
@@ -631,35 +637,56 @@ const getCourtsData = async (filters = {}) => {
   const courts = await Court.findAll({
     include: [
       {
-        model: Club,
-        as: 'Club',
-        attributes: ['business_name'],
-        required: false
-      },
-      {
-        model: Partner,
-        as: 'Partner',
-        attributes: ['business_name'],
+        model: State,
+        as: 'state',
+        attributes: ['name', 'short_code'],
         required: false
       }
     ],
     limit: 1000
   })
 
-  return courts.map(court => ({
-    name: court.name,
-    club_name: court.Club?.business_name,
-    partner_name: court.Partner?.business_name,
-    location: {
-      city: court.city,
-      state: court.state
-    },
-    surface_type: court.surface_type,
-    hourly_rate: court.hourly_rate,
-    status: court.status,
-    total_reservations: court.total_reservations || 0,
-    revenue_generated: court.revenue_generated || 0
+  // Get owners data for each court
+  const courtsWithOwners = await Promise.all(courts.map(async (court) => {
+    let ownerName = 'Independent'
+
+    if (court.owner_type === 'club') {
+      const club = await Club.findByPk(court.owner_id, {
+        attributes: ['name', 'business_name']
+      })
+      ownerName = club?.name || club?.business_name || 'Club'
+    } else if (court.owner_type === 'partner') {
+      const partner = await Partner.findByPk(court.owner_id, {
+        attributes: ['business_name', 'contact_name']
+      })
+      ownerName = partner?.business_name || 'Partner'
+    }
+
+    // Get reservation count and revenue for this court
+    const reservationStats = await CourtReservation.aggregate('amount', 'sum', {
+      where: { court_id: court.id, payment_status: 'paid' }
+    })
+
+    const reservationCount = await CourtReservation.count({
+      where: { court_id: court.id }
+    })
+
+    return {
+      name: court.name,
+      club_name: court.owner_type === 'club' ? ownerName : null,
+      partner_name: court.owner_type === 'partner' ? ownerName : null,
+      location: {
+        city: court.address ? court.address.split(',')[0] : 'N/A',
+        state: court.state?.name || 'N/A'
+      },
+      surface_type: court.surface_type,
+      status: court.status,
+      total_reservations: reservationCount || 0,
+      revenue_generated: reservationStats || 0
+    }
   }))
+
+  return courtsWithOwners
 }
 
 module.exports = {

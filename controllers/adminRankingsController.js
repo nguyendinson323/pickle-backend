@@ -116,11 +116,14 @@ const getPlayerRankings = async (req, res) => {
     // Apply change type filter if specified
     if (changeType) {
       if (changeType === 'up') {
-        whereConditions[sequelize.literal('current_rank < previous_rank')] = true
+        whereConditions[Op.and] = whereConditions[Op.and] || []
+        whereConditions[Op.and].push(sequelize.literal('current_rank < previous_rank'))
       } else if (changeType === 'down') {
-        whereConditions[sequelize.literal('current_rank > previous_rank')] = true
+        whereConditions[Op.and] = whereConditions[Op.and] || []
+        whereConditions[Op.and].push(sequelize.literal('current_rank > previous_rank'))
       } else if (changeType === 'stable') {
-        whereConditions[sequelize.literal('current_rank = previous_rank')] = true
+        whereConditions[Op.and] = whereConditions[Op.and] || []
+        whereConditions[Op.and].push(sequelize.literal('current_rank = previous_rank'))
       } else if (changeType === 'new') {
         whereConditions.previous_rank = null
       }

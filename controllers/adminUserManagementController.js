@@ -169,8 +169,8 @@ const getUsers = async (req, res) => {
 
     // Format users for frontend
     const formattedUsers = users.map(user => {
-      const profile = user.PlayerProfile || user.CoachProfile || user.ClubProfile || 
-                     user.PartnerProfile || user.StateProfile
+      const profile = user.player || user.coach || user.club ||
+                     user.partner || user.stateCommittee
 
       let affiliationStatus = 'pending'
       let affiliationExpiresAt = null
@@ -225,13 +225,13 @@ const getUsers = async (req, res) => {
 
 const getUserDetails = async (req, res) => {
   try {
-    const { userId } = req.params
+    const { id: userId } = req.params
 
     const user = await User.findByPk(userId, {
       include: [
         {
           model: Player,
-          as: 'PlayerProfile',
+          as: 'player',
           required: false,
           include: [
             {
@@ -241,7 +241,7 @@ const getUserDetails = async (req, res) => {
             },
             {
               model: Club,
-              as: 'Club',
+              as: 'club',
               required: false,
               attributes: ['id', 'name']
             }
@@ -249,7 +249,7 @@ const getUserDetails = async (req, res) => {
         },
         {
           model: Coach,
-          as: 'CoachProfile',
+          as: 'coach',
           required: false,
           include: [
             {
@@ -261,7 +261,7 @@ const getUserDetails = async (req, res) => {
         },
         {
           model: Club,
-          as: 'ClubProfile',
+          as: 'club',
           required: false,
           include: [
             {
@@ -305,30 +305,30 @@ const getUserDetails = async (req, res) => {
     // Get additional data based on user type
     let additionalData = {}
 
-    if (user.role === 'player' && user.PlayerProfile) {
+    if (user.role === 'player' && user.player) {
       // Get player-specific data
       const tournamentsPlayed = await TournamentRegistration.count({
-        where: { player_id: user.PlayerProfile.id }
+        where: { player_id: user.player.id }
       })
-      
+
       const courtReservations = await CourtReservation.count({
-        where: { player_id: user.PlayerProfile.id }
+        where: { player_id: user.player.id }
       })
 
       additionalData = {
         tournaments_played: tournamentsPlayed,
         court_reservations: courtReservations,
-        ranking_points: user.PlayerProfile.ranking_position || 0,
-        ranking_position: user.PlayerProfile.ranking_position || 0
+        ranking_points: user.player.ranking_position || 0,
+        ranking_position: user.player.ranking_position || 0
       }
-    } else if (user.role === 'coach' && user.CoachProfile) {
+    } else if (user.role === 'coach' && user.coach) {
       // Get coach-specific data
       const studentsCount = await User.count({
         include: [
           {
             model: Player,
-            as: 'PlayerProfile',
-            where: { coach_id: user.CoachProfile.id },
+            as: 'player',
+            where: { coach_id: user.coach.id },
             required: true
           }
         ]
@@ -340,25 +340,25 @@ const getUserDetails = async (req, res) => {
         referee_matches: 0, // Will be implemented with matches table
         certifications: []
       }
-    } else if (user.role === 'club' && user.ClubProfile) {
+    } else if (user.role === 'club' && user.club) {
       // Get club-specific data
       const totalMembers = await User.count({
         include: [
           {
             model: Player,
-            as: 'PlayerProfile',
-            where: { club_id: user.ClubProfile.id },
+            as: 'player',
+            where: { club_id: user.club.id },
             required: true
           }
         ]
       })
 
       const totalCourts = await Court.count({
-        where: { owner_type: 'club', owner_id: user.ClubProfile.id }
+        where: { owner_type: 'club', owner_id: user.club.id }
       })
 
       const totalTournaments = await Tournament.count({
-        where: { organizer_type: 'club', organizer_id: user.ClubProfile.id }
+        where: { organizer_type: 'club', organizer_id: user.club.id }
       })
 
       additionalData = {
@@ -367,14 +367,14 @@ const getUserDetails = async (req, res) => {
         total_tournaments: totalTournaments,
         monthly_revenue: 0 // Will be calculated from payments
       }
-    } else if (user.role === 'partner' && user.PartnerProfile) {
+    } else if (user.role === 'partner' && user.partner) {
       // Get partner-specific data
       const totalCourts = await Court.count({
-        where: { owner_type: 'partner', owner_id: user.PartnerProfile.id }
+        where: { owner_type: 'partner', owner_id: user.partner.id }
       })
 
       const totalEvents = await Tournament.count({
-        where: { organizer_type: 'partner', organizer_id: user.PartnerProfile.id }
+        where: { organizer_type: 'partner', organizer_id: user.partner.id }
       })
 
       additionalData = {
@@ -382,14 +382,14 @@ const getUserDetails = async (req, res) => {
         total_events: totalEvents,
         monthly_revenue: 0 // Will be calculated from payments
       }
-    } else if (user.role === 'state' && user.StateProfile) {
+    } else if (user.role === 'state' && user.stateCommittee) {
       // Get state-specific data
       const totalPlayers = await User.count({
         include: [
           {
             model: Player,
-            as: 'PlayerProfile',
-            where: { state_id: user.StateProfile.state_id },
+            as: 'player',
+            where: { state_id: user.stateCommittee.state_id },
             required: true
           }
         ]
@@ -399,8 +399,8 @@ const getUserDetails = async (req, res) => {
         include: [
           {
             model: Club,
-            as: 'ClubProfile',
-            where: { state_id: user.StateProfile.state_id },
+            as: 'club',
+            where: { state_id: user.stateCommittee.state_id },
             required: true
           }
         ]
@@ -411,14 +411,14 @@ const getUserDetails = async (req, res) => {
           {
             model: Partner,
             as: 'partner',
-            where: { state_id: user.StateProfile.state_id },
+            where: { state_id: user.stateCommittee.state_id },
             required: true
           }
         ]
       })
 
       const totalTournaments = await Tournament.count({
-        where: { state_id: user.StateProfile.state_id }
+        where: { state_id: user.stateCommittee.state_id }
       })
 
       additionalData = {
@@ -430,8 +430,8 @@ const getUserDetails = async (req, res) => {
       }
     }
 
-    const profile = user.PlayerProfile || user.CoachProfile || user.ClubProfile || 
-                   user.PartnerProfile || user.StateProfile
+    const profile = user.player || user.coach || user.club ||
+                   user.partner || user.stateCommittee
 
     let affiliationStatus = 'pending'
     let affiliationExpiresAt = null
@@ -466,10 +466,10 @@ const getUserDetails = async (req, res) => {
           birth_date: profile.birth_date,
           gender: profile.gender,
           state_id: profile.state_id,
-          state_name: profile.State?.name,
+          state_name: profile.state?.name,
           ...(user.role === 'player' && {
             club_id: profile.club_id,
-            club_name: profile.Club?.name,
+            club_name: profile.club?.name,
             nrtp_level: profile.nrtp_level,
             nationality: profile.nationality,
             profile_photo_url: profile.profile_photo_url,
@@ -507,7 +507,7 @@ const getUserDetails = async (req, res) => {
 
 const updateUserStatus = async (req, res) => {
   try {
-    const { userId } = req.params
+    const { id: userId } = req.params
     const { status, reason } = req.body
 
     const user = await User.findByPk(userId)
@@ -549,7 +549,7 @@ const updateUserStatus = async (req, res) => {
 
 const updateUserVerification = async (req, res) => {
   try {
-    const { userId } = req.params
+    const { id: userId } = req.params
     const { verified } = req.body
 
     const user = await User.findByPk(userId)
@@ -585,7 +585,7 @@ const updateUserVerification = async (req, res) => {
 
 const updateUserPremium = async (req, res) => {
   try {
-    const { userId } = req.params
+    const { id: userId } = req.params
     const { premium, duration } = req.body
 
     const user = await User.findByPk(userId)
@@ -621,7 +621,7 @@ const updateUserPremium = async (req, res) => {
 
 const resetUserPassword = async (req, res) => {
   try {
-    const { userId } = req.params
+    const { id: userId } = req.params
 
     const user = await User.findByPk(userId)
     if (!user) {
