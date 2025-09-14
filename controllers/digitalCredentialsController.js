@@ -279,10 +279,13 @@ const digitalCredentialsController = {
     try {
       const { qrCodeData } = req.params;
 
+      // Decode URI component in case it's URL encoded
+      const decodedQrCodeData = decodeURIComponent(qrCodeData);
+
       const credential = await DigitalCredential.findOne({
-        where: { 
-          qr_code_data: qrCodeData,
-          is_active: true 
+        where: {
+          qr_code_data: decodedQrCodeData,
+          is_active: true
         },
         include: [
           {

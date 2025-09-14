@@ -41,6 +41,10 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: 'club_id',
         as: 'club'
       });
+      Player.hasMany(models.DigitalCredential, {
+        foreignKey: 'player_id',
+        as: 'digitalCredentials'
+      });
     }
   }
 

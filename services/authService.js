@@ -72,9 +72,16 @@ const login = async (username, password) => {
       id: user.id,
       username: user.username,
       email: user.email,
+      phone: user.phone,
       role: user.role,
+      is_active: user.is_active,
+      is_verified: user.is_verified,
       is_premium: user.is_premium,
-      is_verified: user.is_verified
+      is_searchable: user.is_searchable,
+      profile_photo_url: user.profile_photo_url,
+      last_login: user.last_login,
+      created_at: user.created_at,
+      updated_at: user.updated_at
     },
     dashboard: dashboardData
   }
