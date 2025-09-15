@@ -307,7 +307,7 @@ const createStateTournament = async (req, res) => {
       name, description, tournament_type, venue_name, venue_address,
       start_date, end_date, registration_start, registration_end,
       entry_fee, max_participants, is_ranking, ranking_multiplier,
-      categories
+      banner_url, categories
     } = req.body
 
     // Get state committee profile
@@ -335,6 +335,7 @@ const createStateTournament = async (req, res) => {
       registration_end,
       entry_fee,
       max_participants,
+      banner_url,
       is_ranking: is_ranking !== false,
       ranking_multiplier: ranking_multiplier || 1.0,
       status: 'upcoming'

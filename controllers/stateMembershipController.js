@@ -41,6 +41,10 @@ const getStateMembershipData = async (req, res) => {
     // Get state statistics
     const stateId = stateCommittee.state_id
 
+    if (!stateId) {
+      return res.status(400).json({ message: 'State committee is missing state_id association' })
+    }
+
     // Count registered players in the state
     const registeredPlayers = await Player.count({
       where: { state_id: stateId }

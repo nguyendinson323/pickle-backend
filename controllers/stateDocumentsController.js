@@ -135,37 +135,49 @@ const getStateDocuments = async (req, res) => {
   }
 }
 
-// Upload document
+// Upload document using centralized upload system
 const uploadStateDocument = async (req, res) => {
   try {
     const userId = req.user.id
-    
+
     // Get state committee profile
     const stateCommittee = await StateCommittee.findOne({
       where: { user_id: userId }
     })
-    
+
     if (!stateCommittee) {
       return res.status(404).json({ message: 'State committee not found' })
     }
 
+    // Extract document metadata from form fields
     const {
       title,
       description,
-      is_public,
-      file // This should be a base64 encoded file or file data
+      is_public
     } = req.body
+
+    // The file is uploaded via the centralized upload system
+    const file = req.file
 
     if (!title || !file) {
       return res.status(400).json({ message: 'Title and file are required' })
     }
 
-    // Upload to Cloudinary
+    // Upload to Cloudinary using upload_stream for buffer data
     let uploadResult
     try {
-      uploadResult = await cloudinary.uploader.upload(file, {
-        folder: 'state-documents',
-        resource_type: 'auto'
+      uploadResult = await new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          {
+            folder: 'state-documents',
+            resource_type: 'auto',
+            public_id: `state-${userId}-${Date.now()}`
+          },
+          (error, result) => {
+            if (error) reject(error)
+            else resolve(result)
+          }
+        ).end(file.buffer)
       })
     } catch (uploadError) {
       console.error('Cloudinary upload error:', uploadError)
@@ -178,7 +190,7 @@ const uploadStateDocument = async (req, res) => {
       title,
       description: description || null,
       document_url: uploadResult.secure_url,
-      file_type: uploadResult.format || 'unknown',
+      file_type: uploadResult.format || file.mimetype || 'unknown',
       is_public: is_public === 'true' || is_public === true
     })
 
@@ -193,7 +205,12 @@ const uploadStateDocument = async (req, res) => {
       ]
     })
 
+    // Return response in format expected by centralized upload system
     res.status(201).json({
+      secure_url: uploadResult.secure_url,
+      public_id: uploadResult.public_id,
+      width: uploadResult.width || 0,
+      height: uploadResult.height || 0,
       document: documentWithUser,
       message: 'Document uploaded successfully'
     })
@@ -338,9 +355,79 @@ const downloadStateDocument = async (req, res) => {
   }
 }
 
+// Save document metadata after centralized upload
+const saveStateDocumentMetadata = async (req, res) => {
+  try {
+    const userId = req.user.id
+
+    // Get state committee profile
+    const stateCommittee = await StateCommittee.findOne({
+      where: { user_id: userId }
+    })
+
+    if (!stateCommittee) {
+      return res.status(404).json({ message: 'State committee not found' })
+    }
+
+    const {
+      title,
+      description,
+      is_public,
+      document_url
+    } = req.body
+
+    if (!title || !document_url) {
+      return res.status(400).json({ message: 'Title and document URL are required' })
+    }
+
+    // Determine file type from URL
+    let file_type = 'unknown'
+    if (document_url.includes('.pdf')) {
+      file_type = 'application/pdf'
+    } else if (document_url.includes('.doc') || document_url.includes('.docx')) {
+      file_type = 'application/msword'
+    } else if (document_url.includes('.jpg') || document_url.includes('.jpeg')) {
+      file_type = 'image/jpeg'
+    } else if (document_url.includes('.png')) {
+      file_type = 'image/png'
+    }
+
+    // Create document record
+    const document = await Document.create({
+      owner_id: userId,
+      title,
+      description: description || null,
+      document_url,
+      file_type,
+      is_public: is_public === true || is_public === 'true'
+    })
+
+    // Fetch document with user data
+    const documentWithUser = await Document.findByPk(document.id, {
+      include: [
+        {
+          model: User,
+          as: 'owner',
+          attributes: ['id', 'username', 'email']
+        }
+      ]
+    })
+
+    res.status(201).json({
+      document: documentWithUser,
+      message: 'Document metadata saved successfully'
+    })
+
+  } catch (error) {
+    console.error('Error saving document metadata:', error)
+    res.status(500).json({ message: 'Failed to save document metadata' })
+  }
+}
+
 module.exports = {
   getStateDocuments,
   uploadStateDocument,
+  saveStateDocumentMetadata,
   updateStateDocument,
   deleteStateDocument,
   downloadStateDocument

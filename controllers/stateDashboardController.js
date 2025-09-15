@@ -94,7 +94,7 @@ const getStateDashboard = async (req, res) => {
       where: {
         state_id: stateId,
         start_date: { [Op.gte]: new Date() },
-        status: 'upcoming'
+        status: ['upcoming', 'ongoing']
       },
       order: [['start_date', 'ASC']],
       limit: 5
@@ -165,35 +165,104 @@ const getStateDashboard = async (req, res) => {
       }
     })
 
-    // Get pending approvals (simplified - could be expanded based on business logic)
-    const pendingApprovals = await Club.findAll({
-      where: {
-        state_id: stateId,
-        created_at: { [Op.gte]: thirtyDaysAgo }
-      },
+    // Get pending approvals - comprehensive approval system
+    const formattedPendingApprovals = []
+
+    // Pending club verifications
+    const pendingClubs = await Club.findAll({
+      where: { state_id: stateId },
       include: [{
         model: User,
         as: 'user',
         where: { is_verified: false }
       }],
-      limit: 10
+      limit: 5
     })
 
-    const formattedPendingApprovals = pendingApprovals.map(club => ({
-      type: 'Club Registration',
-      name: club.name,
-      location: 'State Committee',
-      submittedDate: club.created_at
-    }))
+    pendingClubs.forEach(club => {
+      const timeDiff = Date.now() - new Date(club.created_at).getTime()
+      const daysAgo = Math.floor(timeDiff / (1000 * 60 * 60 * 24))
+      const timeText = daysAgo === 0 ? 'Today' : `${daysAgo} days ago`
+
+      formattedPendingApprovals.push({
+        userId: club.user_id,
+        type: 'Club Registration',
+        name: club.name,
+        location: club.user?.username || 'Unknown',
+        submittedDate: timeText
+      })
+    })
+
+    // Pending player verifications
+    const pendingPlayers = await Player.findAll({
+      where: { state_id: stateId },
+      include: [{
+        model: User,
+        as: 'user',
+        where: { is_verified: false }
+      }],
+      limit: 5
+    })
+
+    pendingPlayers.forEach(player => {
+      const timeDiff = Date.now() - new Date(player.created_at).getTime()
+      const daysAgo = Math.floor(timeDiff / (1000 * 60 * 60 * 24))
+      const timeText = daysAgo === 0 ? 'Today' : `${daysAgo} days ago`
+
+      formattedPendingApprovals.push({
+        userId: player.user_id,
+        type: 'Player Verification',
+        name: player.full_name,
+        location: player.user?.username || 'Unknown',
+        submittedDate: timeText
+      })
+    })
+
+    // Pending coach verifications
+    const pendingCoaches = await Coach.findAll({
+      where: { state_id: stateId },
+      include: [{
+        model: User,
+        as: 'user',
+        where: { is_verified: false }
+      }],
+      limit: 3
+    })
+
+    pendingCoaches.forEach(coach => {
+      const timeDiff = Date.now() - new Date(coach.created_at).getTime()
+      const daysAgo = Math.floor(timeDiff / (1000 * 60 * 60 * 24))
+      const timeText = daysAgo === 0 ? 'Today' : `${daysAgo} days ago`
+
+      formattedPendingApprovals.push({
+        userId: coach.user_id,
+        type: 'Coach Verification',
+        name: coach.full_name,
+        location: coach.user?.username || 'Unknown',
+        submittedDate: timeText
+      })
+    })
+
+    // Sort by most recent first
+    formattedPendingApprovals.sort((a, b) => {
+      const getDays = (timeText) => {
+        if (timeText === 'Today') return 0
+        return parseInt(timeText.split(' ')[0])
+      }
+      return getDays(a.submittedDate) - getDays(b.submittedDate)
+    })
 
     // Get recent activity
     const recentActivity = []
 
     // Recent player registrations
     const recentPlayers = await Player.findAll({
-      where: { state_id: stateId },
+      where: {
+        state_id: stateId,
+        created_at: { [Op.gte]: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000) }
+      },
       order: [['created_at', 'DESC']],
-      limit: 3,
+      limit: 5,
       include: [{
         model: User,
         as: 'user',
@@ -202,33 +271,74 @@ const getStateDashboard = async (req, res) => {
     })
 
     recentPlayers.forEach(player => {
+      const timeDiff = Date.now() - new Date(player.created_at).getTime()
+      const hoursAgo = Math.floor(timeDiff / (1000 * 60 * 60))
+      const timeText = hoursAgo < 24 ? `${hoursAgo} hours ago` : `${Math.floor(hoursAgo / 24)} days ago`
+
       recentActivity.push({
         icon: '👤',
         message: `New player ${player.full_name} registered`,
-        time: player.created_at
+        time: timeText
       })
     })
 
     // Recent tournaments
     const recentTournaments = await Tournament.findAll({
-      where: { 
+      where: {
         state_id: stateId,
-        created_at: { [Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+        created_at: { [Op.gte]: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000) }
+      },
+      order: [['created_at', 'DESC']],
+      limit: 3
+    })
+
+    recentTournaments.forEach(tournament => {
+      const timeDiff = Date.now() - new Date(tournament.created_at).getTime()
+      const hoursAgo = Math.floor(timeDiff / (1000 * 60 * 60))
+      const timeText = hoursAgo < 24 ? `${hoursAgo} hours ago` : `${Math.floor(hoursAgo / 24)} days ago`
+
+      recentActivity.push({
+        icon: '🏆',
+        message: `Tournament "${tournament.name}" was created`,
+        time: timeText
+      })
+    })
+
+    // Recent club registrations
+    const recentClubs = await Club.findAll({
+      where: {
+        state_id: stateId,
+        created_at: { [Op.gte]: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000) }
       },
       order: [['created_at', 'DESC']],
       limit: 2
     })
 
-    recentTournaments.forEach(tournament => {
+    recentClubs.forEach(club => {
+      const timeDiff = Date.now() - new Date(club.created_at).getTime()
+      const hoursAgo = Math.floor(timeDiff / (1000 * 60 * 60))
+      const timeText = hoursAgo < 24 ? `${hoursAgo} hours ago` : `${Math.floor(hoursAgo / 24)} days ago`
+
       recentActivity.push({
-        icon: '🏆',
-        message: `Tournament "${tournament.name}" was created`,
-        time: tournament.created_at
+        icon: '🏢',
+        message: `New club "${club.name}" registered`,
+        time: timeText
       })
     })
 
-    // Sort recent activity by time
-    recentActivity.sort((a, b) => new Date(b.time) - new Date(a.time))
+    // Sort recent activity by creation time (newest first)
+    recentActivity.sort((a, b) => {
+      // Parse time text to compare properly
+      const getHours = (timeText) => {
+        if (timeText.includes('hours ago')) {
+          return parseInt(timeText.split(' ')[0])
+        } else if (timeText.includes('days ago')) {
+          return parseInt(timeText.split(' ')[0]) * 24
+        }
+        return 0
+      }
+      return getHours(a.time) - getHours(b.time)
+    })
 
     // Calculate national ranking (simplified - rank by total players)
     const allStatesPlayerCount = await StateCommittee.findAll({
@@ -364,7 +474,130 @@ const getStatePerformanceMetrics = async (req, res) => {
   }
 }
 
+// Quick approve user from dashboard
+const approveUser = async (req, res) => {
+  try {
+    const { userId } = req.params
+    const currentUser = req.user
+
+    // Get state committee to verify permission
+    const stateCommittee = await StateCommittee.findOne({
+      where: { user_id: currentUser.id }
+    })
+
+    if (!stateCommittee) {
+      return res.status(404).json({ message: 'State committee not found' })
+    }
+
+    // Find the user and verify they belong to this state
+    const user = await User.findByPk(userId)
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' })
+    }
+
+    // Check if user belongs to this state by checking their profile
+    let belongsToState = false
+    if (user.role === 'player') {
+      const player = await Player.findOne({ where: { user_id: userId, state_id: stateCommittee.state_id } })
+      belongsToState = !!player
+    } else if (user.role === 'club') {
+      const club = await Club.findOne({ where: { user_id: userId, state_id: stateCommittee.state_id } })
+      belongsToState = !!club
+    } else if (user.role === 'coach') {
+      const coach = await Coach.findOne({ where: { user_id: userId, state_id: stateCommittee.state_id } })
+      belongsToState = !!coach
+    } else if (user.role === 'partner') {
+      const partner = await Partner.findOne({ where: { user_id: userId, state_id: stateCommittee.state_id } })
+      belongsToState = !!partner
+    }
+
+    if (!belongsToState) {
+      return res.status(403).json({ message: 'User does not belong to your state' })
+    }
+
+    // Approve the user
+    await user.update({ is_verified: true })
+
+    res.json({
+      message: 'User approved successfully',
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        is_verified: user.is_verified
+      }
+    })
+
+  } catch (error) {
+    console.error('Error approving user:', error)
+    res.status(500).json({ message: 'Failed to approve user' })
+  }
+}
+
+// Quick reject user from dashboard
+const rejectUser = async (req, res) => {
+  try {
+    const { userId } = req.params
+    const currentUser = req.user
+
+    // Get state committee to verify permission
+    const stateCommittee = await StateCommittee.findOne({
+      where: { user_id: currentUser.id }
+    })
+
+    if (!stateCommittee) {
+      return res.status(404).json({ message: 'State committee not found' })
+    }
+
+    // Find the user and verify they belong to this state
+    const user = await User.findByPk(userId)
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' })
+    }
+
+    // Check if user belongs to this state by checking their profile
+    let belongsToState = false
+    if (user.role === 'player') {
+      const player = await Player.findOne({ where: { user_id: userId, state_id: stateCommittee.state_id } })
+      belongsToState = !!player
+    } else if (user.role === 'club') {
+      const club = await Club.findOne({ where: { user_id: userId, state_id: stateCommittee.state_id } })
+      belongsToState = !!club
+    } else if (user.role === 'coach') {
+      const coach = await Coach.findOne({ where: { user_id: userId, state_id: stateCommittee.state_id } })
+      belongsToState = !!coach
+    } else if (user.role === 'partner') {
+      const partner = await Partner.findOne({ where: { user_id: userId, state_id: stateCommittee.state_id } })
+      belongsToState = !!partner
+    }
+
+    if (!belongsToState) {
+      return res.status(403).json({ message: 'User does not belong to your state' })
+    }
+
+    // Reject the user by setting them inactive
+    await user.update({ is_active: false, is_verified: false })
+
+    res.json({
+      message: 'User rejected successfully',
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        is_active: user.is_active,
+        is_verified: user.is_verified
+      }
+    })
+
+  } catch (error) {
+    console.error('Error rejecting user:', error)
+    res.status(500).json({ message: 'Failed to reject user' })
+  }
+}
+
 module.exports = {
   getStateDashboard,
-  getStatePerformanceMetrics
+  getStatePerformanceMetrics,
+  approveUser,
+  rejectUser
 }

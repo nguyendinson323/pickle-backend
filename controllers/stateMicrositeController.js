@@ -34,7 +34,7 @@ const getStateMicrositeData = async (req, res) => {
         as: 'state',
         attributes: ['name', 'short_code']
       }],
-      attributes: ['id', 'name']
+      attributes: ['id', 'name', 'state_id']
     })
 
     // Get or create microsite info from database

@@ -547,8 +547,15 @@ const getMessageTemplates = async (req, res) => {
       order: [['created_at', 'DESC']]
     })
 
+    // Map body field to content for frontend compatibility
+    const templatesWithContent = templates.map(template => ({
+      ...template.toJSON(),
+      content: template.body,
+      target_audience: 'All Members' // Default value for compatibility
+    }))
+
     res.json({
-      templates,
+      templates: templatesWithContent,
       success: true
     })
 
@@ -567,8 +574,7 @@ const createMessageTemplate = async (req, res) => {
     const template = await MessageTemplate.create({
       name,
       subject,
-      content,
-      target_audience,
+      body: content,
       created_by: userId
     })
 
@@ -600,6 +606,12 @@ const updateMessageTemplate = async (req, res) => {
 
     if (!template) {
       return res.status(404).json({ message: 'Template not found' })
+    }
+
+    // Map content to body for database compatibility
+    if (updateData.content) {
+      updateData.body = updateData.content
+      delete updateData.content
     }
 
     await template.update(updateData)

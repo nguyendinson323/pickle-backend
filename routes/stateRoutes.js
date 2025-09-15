@@ -1,5 +1,6 @@
 const express = require('express')
 const router = express.Router()
+const multer = require('multer')
 const { authenticate } = require('../middlewares/authMiddleware')
 const { authorize } = require('../middlewares/authorizationMiddleware')
 const stateManagementController = require('../controllers/stateManagementController')
@@ -11,6 +12,26 @@ const stateMemberManagementController = require('../controllers/stateMemberManag
 const stateDashboardController = require('../controllers/stateDashboardController')
 const stateMembershipController = require('../controllers/stateMembershipController')
 
+// Configure multer for document uploads (supports images and PDFs)
+const storage = multer.memoryStorage()
+const uploadDocument = multer({
+  storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/') ||
+        file.mimetype === 'application/pdf' ||
+        file.mimetype.includes('document') ||
+        file.mimetype.includes('word') ||
+        file.mimetype.includes('officedocument')) {
+      cb(null, true)
+    } else {
+      cb(new Error('Only image files, PDFs, and documents are allowed'), false)
+    }
+  }
+})
+
 // ==================== DASHBOARD ROUTES ====================
 
 // Get state dashboard data
@@ -21,10 +42,23 @@ router.get('/dashboard',
 )
 
 // Get state performance metrics
-router.get('/dashboard/metrics', 
-  authenticate, 
-  authorize(['state']), 
+router.get('/dashboard/metrics',
+  authenticate,
+  authorize(['state']),
   stateDashboardController.getStatePerformanceMetrics
+)
+
+// Quick approval actions from dashboard
+router.put('/dashboard/approve-user/:userId',
+  authenticate,
+  authorize(['state']),
+  stateDashboardController.approveUser
+)
+
+router.put('/dashboard/reject-user/:userId',
+  authenticate,
+  authorize(['state']),
+  stateDashboardController.rejectUser
 )
 
 // ==================== MANAGEMENT ROUTES ====================
@@ -211,10 +245,18 @@ router.get('/documents',
 )
 
 // Upload state document
-router.post('/documents/upload', 
-  authenticate, 
-  authorize(['state']), 
+router.post('/documents/upload',
+  authenticate,
+  authorize(['state']),
+  uploadDocument.single('file'),
   stateDocumentsController.uploadStateDocument
+)
+
+// Save document metadata after centralized upload
+router.post('/documents/save-metadata',
+  authenticate,
+  authorize(['state']),
+  stateDocumentsController.saveStateDocumentMetadata
 )
 
 // Update state document
