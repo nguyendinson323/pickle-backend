@@ -19,6 +19,7 @@ const stateRoutes = require('./stateRoutes')
 const partnerRoutes = require('./partnerRoutes')
 const adminRoutes = require('./admin')
 const uploadRoutes = require('./upload')
+const paymentRoutes = require('./payments')
 
 const initializeRoutes = (app) => {
   app.get('/health', (req, res) => {
@@ -51,6 +52,7 @@ const initializeRoutes = (app) => {
   app.use('/api/partner', partnerRoutes)
   app.use('/api/admin', adminRoutes)
   app.use('/api/upload', uploadRoutes)
+  app.use('/api/payments', paymentRoutes)
 
   app.use('*', (req, res) => {
     res.status(404).json({ 
