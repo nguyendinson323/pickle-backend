@@ -114,17 +114,17 @@ const getPartnerStatistics = async (req, res) => {
       include: [{
         model: Court,
         as: 'court',
-        where: { 
+        where: {
           owner_type: 'partner',
-          owner_id: partnerId 
+          owner_id: partnerId
         },
         attributes: []
       }],
       where: dateFilter,
       attributes: [
         [fn('COUNT', col('CourtReservation.id')), 'total_reservations'],
-        [fn('COUNT', literal("CASE WHEN status = 'confirmed' THEN 1 END")), 'completed_reservations'],
-        [fn('COUNT', literal("CASE WHEN status = 'canceled' THEN 1 END")), 'canceled_reservations'],
+        [fn('COUNT', literal('CASE WHEN CourtReservation.status = \'confirmed\' THEN 1 END')), 'completed_reservations'],
+        [fn('COUNT', literal('CASE WHEN CourtReservation.status = \'canceled\' THEN 1 END')), 'canceled_reservations'],
         [fn('AVG', col('amount')), 'average_booking_value']
       ],
       raw: true
@@ -134,14 +134,13 @@ const getPartnerStatistics = async (req, res) => {
       include: [{
         model: Court,
         as: 'court',
-        where: { 
+        where: {
           owner_type: 'partner',
-          owner_id: partnerId 
+          owner_id: partnerId
         },
         attributes: []
       }],
       where: {
-        status: { [Op.ne]: 'canceled' },
         ...dateFilter
       },
       attributes: [
@@ -158,14 +157,13 @@ const getPartnerStatistics = async (req, res) => {
       include: [{
         model: Court,
         as: 'court',
-        where: { 
+        where: {
           owner_type: 'partner',
-          owner_id: partnerId 
+          owner_id: partnerId
         },
         attributes: ['id', 'name']
       }],
       where: {
-        status: { [Op.ne]: 'canceled' },
         ...dateFilter
       },
       attributes: [
@@ -204,8 +202,8 @@ const getPartnerStatistics = async (req, res) => {
       },
       attributes: [
         [fn('COUNT', col('id')), 'total_tournaments'],
-        [fn('COUNT', literal("CASE WHEN status = 'completed' THEN 1 END")), 'completed_tournaments'],
-        [fn('COUNT', literal("CASE WHEN status = 'ongoing' THEN 1 END")), 'active_tournaments'],
+        [fn('COUNT', literal('CASE WHEN Tournament.status = \'completed\' THEN 1 END')), 'completed_tournaments'],
+        [fn('COUNT', literal('CASE WHEN Tournament.status = \'ongoing\' THEN 1 END')), 'active_tournaments'],
         [fn('SUM', col('max_participants')), 'total_participants'],
         [fn('AVG', col('max_participants')), 'average_participants_per_tournament']
       ],
@@ -271,7 +269,7 @@ const getPartnerStatistics = async (req, res) => {
         [fn('SUM', col('amount')), 'total_spent'],
         [fn('COUNT', col('CourtReservation.id')), 'total_reservations']
       ],
-      group: [col('player.user.id'), col('player.full_name')],
+      group: [col('player.user.id'), col('player.full_name'), col('player.id')],
       order: [[fn('SUM', col('amount')), 'DESC']],
       raw: true
     })
@@ -339,7 +337,6 @@ const getPartnerStatistics = async (req, res) => {
         attributes: []
       }],
       where: {
-        status: { [Op.ne]: 'canceled' },
         ...dateFilter
       },
       attributes: [

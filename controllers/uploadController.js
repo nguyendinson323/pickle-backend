@@ -10,7 +10,7 @@ cloudinary.config({
 
 // Configure multer for memory storage
 const storage = multer.memoryStorage()
-const upload = multer({ 
+const upload = multer({
   storage,
   limits: {
     fileSize: 5 * 1024 * 1024 // 5MB limit
@@ -20,6 +20,21 @@ const upload = multer({
       cb(null, true)
     } else {
       cb(new Error('Only image files are allowed'), false)
+    }
+  }
+})
+
+// Configure multer for documents and certificates (allows PDFs)
+const uploadCertification = multer({
+  storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit for certifications
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf') {
+      cb(null, true)
+    } else {
+      cb(new Error('Only image files and PDFs are allowed'), false)
     }
   }
 })
@@ -372,8 +387,64 @@ const uploadAdminPhoto = async (req, res) => {
   }
 }
 
+const uploadCoachCertification = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file provided' })
+    }
+
+    // Handle different file types differently
+    const isImage = req.file.mimetype.startsWith('image/')
+    const isPDF = req.file.mimetype === 'application/pdf'
+
+    let uploadOptions = {
+      folder: 'coach_certifications',
+      quality: 'auto'
+    }
+
+    if (isImage) {
+      uploadOptions.transformation = [
+        { width: 1000, height: 1000, crop: 'limit', quality: 'auto' }
+      ]
+      uploadOptions.format = 'jpg'
+    } else if (isPDF) {
+      // For PDFs, Cloudinary will store them as-is
+      uploadOptions.resource_type = 'raw'
+    }
+
+    // Upload to Cloudinary
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        uploadOptions,
+        (error, result) => {
+          if (error) {
+            reject(error)
+          } else {
+            resolve(result)
+          }
+        }
+      ).end(req.file.buffer)
+    })
+
+    res.json({
+      secure_url: result.secure_url,
+      public_id: result.public_id,
+      width: result.width || null,
+      height: result.height || null
+    })
+
+  } catch (error) {
+    console.error('Upload error:', error)
+    res.status(500).json({
+      message: 'Upload failed',
+      error: error.message
+    })
+  }
+}
+
 module.exports = {
   upload: upload.single('file'),
+  uploadCertification: uploadCertification.single('file'),
   uploadClubLogo,
   uploadPlayerPhoto,
   uploadPlayerDocument,
@@ -381,5 +452,6 @@ module.exports = {
   uploadPartnerLogo,
   uploadCoachPhoto,
   uploadCoachDocument,
+  uploadCoachCertification,
   uploadAdminPhoto
 }

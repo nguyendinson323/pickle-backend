@@ -99,11 +99,11 @@ const playerMessagesController = {
             sender_id: lastMessage.sender_id,
             receiver_id: otherParticipant ? otherParticipant.user.id : null,
             content: lastMessage.content,
-            message_type: lastMessage.message_type || 'text',
-            attachment_url: lastMessage.attachment_url,
+            message_type: 'text',
+            attachment_url: null,
             is_read: false,
             sent_at: lastMessage.sent_at,
-            edited_at: lastMessage.edited_at,
+            edited_at: null,
             sender: {
               id: lastMessage.sender.id,
               full_name: lastMessage.sender.player ? lastMessage.sender.player.full_name : lastMessage.sender.username,
@@ -174,11 +174,11 @@ const playerMessagesController = {
         sender_id: msg.sender_id,
         receiver_id: null, // Will be calculated from participants
         content: msg.content,
-        message_type: msg.message_type || 'text',
-        attachment_url: msg.attachment_url,
+        message_type: 'text',
+        attachment_url: null,
         is_read: false, // Will be calculated based on read receipts
         sent_at: msg.sent_at,
-        edited_at: msg.edited_at,
+        edited_at: null,
         sender: {
           id: msg.sender.id,
           full_name: msg.sender.player ? msg.sender.player.full_name : msg.sender.username,
@@ -294,11 +294,11 @@ const playerMessagesController = {
         sender_id: fullMessage.sender_id,
         receiver_id: receiver_id || null,
         content: fullMessage.content,
-        message_type: fullMessage.message_type || 'text',
-        attachment_url: fullMessage.attachment_url,
+        message_type: 'text',
+        attachment_url: null,
         is_read: false,
         sent_at: fullMessage.sent_at,
-        edited_at: fullMessage.edited_at,
+        edited_at: null,
         sender: {
           id: fullMessage.sender.id,
           full_name: fullMessage.sender.player ? fullMessage.sender.player.full_name : fullMessage.sender.username,
@@ -607,11 +607,9 @@ const playerMessagesController = {
         return res.status(404).json({ error: 'Message not found or unauthorized' });
       }
 
-      // Soft delete - update content and mark as deleted
+      // Soft delete - update content only (since message_type and edited_at don't exist in schema)
       await message.update({
-        content: 'This message was deleted',
-        message_type: 'system',
-        edited_at: new Date()
+        content: 'This message was deleted'
       });
 
       res.json({ message: 'Message deleted' });

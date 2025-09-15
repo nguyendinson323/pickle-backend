@@ -1,16 +1,17 @@
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const { Op } = require('sequelize')
-const { 
-  User, 
-  Player, 
-  Coach, 
-  Club, 
-  Partner, 
-  StateCommittee, 
+const {
+  User,
+  Player,
+  Coach,
+  Club,
+  Partner,
+  StateCommittee,
   State,
   Tournament,
   Court,
+  CourtReservation,
   TournamentRegistration,
   PlayerRanking,
   Notification,
@@ -239,7 +240,7 @@ const getDashboardData = async (user) => {
       firstDayOfMonth.setDate(1)
       firstDayOfMonth.setHours(0, 0, 0, 0)
 
-      const monthlyReservations = await require('../db/models').CourtReservation.findAll({
+      const monthlyReservations = await CourtReservation.findAll({
         where: {
           created_at: { [Op.gte]: firstDayOfMonth },
           payment_status: 'paid'
@@ -291,7 +292,7 @@ const getDashboardData = async (user) => {
       const tomorrow = new Date(today)
       tomorrow.setDate(tomorrow.getDate() + 1)
 
-      const todaysBookings = await require('../db/models').CourtReservation.count({
+      const todaysBookings = await CourtReservation.count({
         where: {
           date: {
             [Op.gte]: today,
@@ -312,7 +313,7 @@ const getDashboardData = async (user) => {
       const weekAgo = new Date()
       weekAgo.setDate(weekAgo.getDate() - 7)
       
-      const weeklyReservations = await require('../db/models').CourtReservation.count({
+      const weeklyReservations = await CourtReservation.count({
         where: {
           date: { [Op.gte]: weekAgo }
         },
@@ -384,7 +385,7 @@ const getDashboardData = async (user) => {
       partnerMonthStart.setDate(1)
       partnerMonthStart.setHours(0, 0, 0, 0)
 
-      const partnerReservations = await require('../db/models').CourtReservation.findAll({
+      const partnerReservations = await CourtReservation.findAll({
         where: {
           date: { [Op.gte]: partnerMonthStart },
           payment_status: 'paid'
@@ -406,7 +407,7 @@ const getDashboardData = async (user) => {
       const partnerMonthlyBookings = partnerReservations.length
 
       // Get recent bookings (last 10)
-      const partnerRecentBookings = await require('../db/models').CourtReservation.findAll({
+      const partnerRecentBookings = await CourtReservation.findAll({
         limit: 10,
         order: [['created_at', 'DESC']],
         include: [
@@ -419,7 +420,7 @@ const getDashboardData = async (user) => {
             }
           },
           {
-            model: require('../db/models').Player,
+            model: Player,
             as: 'player',
             include: [{
               model: User,

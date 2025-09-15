@@ -285,10 +285,24 @@ router.put('/membership/payment-method',
 )
 
 // Change subscription plan
-router.put('/membership/change-plan', 
-  authenticate, 
-  authorize('club'), 
+router.put('/membership/change-plan',
+  authenticate,
+  authorize('club'),
   clubMembershipController.changePlan
+)
+
+// Download payment receipt
+router.get('/membership/receipt/:paymentId',
+  authenticate,
+  authorize('club'),
+  clubMembershipController.downloadPaymentReceipt
+)
+
+// Toggle auto renewal
+router.put('/membership/auto-renewal',
+  authenticate,
+  authorize('club'),
+  clubMembershipController.toggleAutoRenewal
 )
 
 module.exports = router

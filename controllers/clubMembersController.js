@@ -364,7 +364,7 @@ const bulkUpdateMembers = async (req, res) => {
 const updateMemberInfo = async (req, res) => {
   try {
     const { memberId } = req.params
-    const { full_name, nrtp_level, affiliation_expires_at } = req.body
+    const { full_name, nrtp_level, affiliation_expires_at, profile_photo_url } = req.body
     const userId = req.user.id
 
     // Get club profile
@@ -402,11 +402,18 @@ const updateMemberInfo = async (req, res) => {
     }
 
     // Update member information
-    await member.update({
+    const updateData = {
       full_name,
       nrtp_level,
       affiliation_expires_at: affiliation_expires_at || null
-    })
+    }
+
+    // Only update profile_photo_url if it's provided
+    if (profile_photo_url !== undefined) {
+      updateData.profile_photo_url = profile_photo_url
+    }
+
+    await member.update(updateData)
 
     res.json({
       member: member,

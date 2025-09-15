@@ -519,6 +519,90 @@ const changePlan = async (req, res) => {
   }
 }
 
+// Download payment receipt
+const downloadPaymentReceipt = async (req, res) => {
+  try {
+    const { paymentId } = req.params
+    const userId = req.user.id
+
+    // Verify payment belongs to the user
+    const payment = await Payment.findOne({
+      where: {
+        id: paymentId,
+        user_id: userId,
+        status: 'completed'
+      }
+    })
+
+    if (!payment) {
+      return res.status(404).json({ message: 'Payment record not found or not completed' })
+    }
+
+    // In a real implementation, this would generate a PDF receipt
+    // For now, we'll return a simple text receipt
+    const receiptContent = `
+PICKLEBALL FEDERATION - PAYMENT RECEIPT
+
+Receipt ID: R-${payment.id}-${Date.now()}
+Date: ${new Date(payment.transaction_date || payment.created_at).toLocaleDateString()}
+Amount: $${payment.amount}
+Payment Method: ${payment.payment_method}
+Payment Type: ${payment.payment_type}
+Status: ${payment.status}
+
+Thank you for your payment!
+    `
+
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `attachment; filename="receipt-${payment.id}.txt"`)
+    res.send(receiptContent)
+
+  } catch (error) {
+    console.error('Error downloading receipt:', error)
+    res.status(500).json({ message: 'Internal server error' })
+  }
+}
+
+// Toggle auto renewal
+const toggleAutoRenewal = async (req, res) => {
+  try {
+    const { auto_renew } = req.body
+    const userId = req.user.id
+
+    const subscription = await Subscription.findOne({
+      where: {
+        user_id: userId,
+        status: 'active'
+      },
+      include: [
+        {
+          model: SubscriptionPlan,
+          as: 'plan',
+          attributes: ['id', 'name', 'description', 'monthly_price', 'yearly_price', 'features']
+        }
+      ]
+    })
+
+    if (!subscription) {
+      return res.status(404).json({ message: 'No active subscription found' })
+    }
+
+    await subscription.update({
+      auto_renew: auto_renew,
+      updated_at: new Date()
+    })
+
+    res.json({
+      subscription,
+      message: `Auto renewal ${auto_renew ? 'enabled' : 'disabled'} successfully`
+    })
+
+  } catch (error) {
+    console.error('Error toggling auto renewal:', error)
+    res.status(500).json({ message: 'Internal server error' })
+  }
+}
+
 module.exports = {
   getAvailableClubPlans,
   getClubMembershipData,
@@ -526,5 +610,7 @@ module.exports = {
   cancelSubscription,
   renewSubscription,
   updatePaymentMethod,
-  changePlan
+  changePlan,
+  downloadPaymentReceipt,
+  toggleAutoRenewal
 }

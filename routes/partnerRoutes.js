@@ -287,4 +287,11 @@ router.put('/membership/change-plan',
   partnerMembershipController.changePartnerPlan
 )
 
+// Download payment receipt
+router.get('/membership/receipt/:paymentId',
+  authenticate,
+  authorize('partner'),
+  partnerMembershipController.downloadPartnerPaymentReceipt
+)
+
 module.exports = router

@@ -437,6 +437,52 @@ const changePartnerPlan = async (req, res) => {
   }
 }
 
+// Download payment receipt
+const downloadPartnerPaymentReceipt = async (req, res) => {
+  try {
+    const userId = req.user.id
+    const { paymentId } = req.params
+
+    // Find the payment and verify it belongs to the user
+    const payment = await Payment.findOne({
+      where: {
+        id: paymentId,
+        user_id: userId
+      }
+    })
+
+    if (!payment) {
+      return res.status(404).json({ message: 'Payment not found' })
+    }
+
+    // Get partner info for the receipt
+    const partner = await Partner.findOne({
+      where: { user_id: userId }
+    })
+
+    // Create receipt data
+    const receiptData = {
+      paymentId: payment.id,
+      date: payment.transaction_date || payment.created_at,
+      amount: payment.amount,
+      currency: payment.currency,
+      status: payment.status,
+      paymentType: payment.payment_type,
+      paymentMethod: payment.payment_method,
+      partnerName: partner?.business_name || 'N/A',
+      stripePaymentId: payment.stripe_payment_id
+    }
+
+    res.json({
+      message: 'Receipt data retrieved successfully',
+      receipt: receiptData
+    })
+  } catch (error) {
+    console.error('Error downloading receipt:', error)
+    res.status(500).json({ message: 'Internal server error' })
+  }
+}
+
 module.exports = {
   getAvailablePartnerPlans,
   getPartnerMembershipData,
@@ -444,5 +490,6 @@ module.exports = {
   cancelPartnerSubscription,
   renewPartnerSubscription,
   updatePartnerPaymentMethod,
-  changePartnerPlan
+  changePartnerPlan,
+  downloadPartnerPaymentReceipt
 }

@@ -50,18 +50,19 @@ const getPartnerManagementData = async (req, res) => {
     const monthlyRevenue = await CourtReservation.findOne({
       include: [{
         model: Court,
-        where: { 
+        as: 'court',
+        where: {
           owner_type: 'partner',
-          owner_id: partner.id 
+          owner_id: partner.id
         },
         attributes: []
       }],
       where: {
-        status: 'completed',
-        createdAt: { [Op.gte]: currentMonth }
+        payment_status: 'paid',
+        created_at: { [Op.gte]: currentMonth }
       },
       attributes: [
-        [fn('SUM', col('total_cost')), 'total_revenue']
+        [fn('SUM', col('amount')), 'total_revenue']
       ],
       raw: true
     })
@@ -69,15 +70,16 @@ const getPartnerManagementData = async (req, res) => {
     const monthlyBookings = await CourtReservation.count({
       include: [{
         model: Court,
-        where: { 
+        as: 'court',
+        where: {
           owner_type: 'partner',
-          owner_id: partner.id 
+          owner_id: partner.id
         },
         attributes: []
       }],
       where: {
-        status: { [Op.ne]: 'canceled' },
-        createdAt: { [Op.gte]: currentMonth }
+        status: { [Op.ne]: 'cancelled' },
+        created_at: { [Op.gte]: currentMonth }
       }
     })
 
@@ -97,21 +99,15 @@ const getPartnerManagementData = async (req, res) => {
       id: court.id,
       name: court.name,
       address: court.address || '',
-      city: '', // Not in database schema
-      state: '', // Not in database schema  
-      zip_code: '', // Not in database schema
       court_count: court.court_count,
-      surface_type: court.surface_type || 'hard',
+      surface_type: court.surface_type,
       indoor: court.indoor,
       lights: court.lights,
       description: court.description,
-      hourly_rate: 0, // Not in database schema
       status: court.status,
       amenities: court.amenities ? court.amenities.split(',').filter(a => a.trim()) : [],
-      operating_hours: [], // Not in database schema
-      images: [], // Not in database schema
-      created_at: court.createdAt,
-      updated_at: court.updatedAt
+      created_at: court.created_at,
+      updated_at: court.updated_at
     }))
 
     // Format tournaments for frontend
@@ -119,23 +115,18 @@ const getPartnerManagementData = async (req, res) => {
       id: tournament.id,
       name: tournament.name,
       description: tournament.description,
-      tournament_type: tournament.tournament_type || 'singles',
-      skill_level: 'open', // Not in database schema
+      tournament_type: tournament.tournament_type,
       start_date: tournament.start_date,
       end_date: tournament.end_date,
       registration_start: tournament.registration_start,
       registration_end: tournament.registration_end,
       max_participants: tournament.max_participants,
-      current_participants: 0, // Not in database schema  
       entry_fee: tournament.entry_fee ? parseFloat(tournament.entry_fee) : null,
-      prize_pool: null, // Not in database schema
       venue_name: tournament.venue_name,
       venue_address: tournament.venue_address,
       status: tournament.status,
-      rules: null, // Not in database schema
-      contact_info: null, // Not in database schema
-      created_at: tournament.createdAt,
-      updated_at: tournament.updatedAt
+      created_at: tournament.created_at,
+      updated_at: tournament.updated_at
     }))
 
     res.json({
@@ -205,8 +196,8 @@ const createCourt = async (req, res) => {
       amenities: court.amenities || [],
       operating_hours: court.operating_hours || [],
       images: court.images || [],
-      created_at: court.createdAt,
-      updated_at: court.updatedAt
+      created_at: court.created_at,
+      updated_at: court.updated_at
     }
 
     res.status(201).json({
@@ -226,8 +217,8 @@ const createCourt = async (req, res) => {
       amenities: court.amenities ? court.amenities.split(',').filter(a => a.trim()) : [],
       operating_hours: [],
       images: [],
-      created_at: court.createdAt,
-      updated_at: court.updatedAt
+      created_at: court.created_at,
+      updated_at: court.updated_at
     })
 
   } catch (error) {
@@ -304,8 +295,8 @@ const updateCourt = async (req, res) => {
       amenities: court.amenities || [],
       operating_hours: court.operating_hours || [],
       images: court.images || [],
-      created_at: court.createdAt,
-      updated_at: court.updatedAt
+      created_at: court.created_at,
+      updated_at: court.updated_at
     }
 
     res.json({
@@ -325,8 +316,8 @@ const updateCourt = async (req, res) => {
       amenities: court.amenities ? court.amenities.split(',').filter(a => a.trim()) : [],
       operating_hours: [],
       images: [],
-      created_at: court.createdAt,
-      updated_at: court.updatedAt
+      created_at: court.created_at,
+      updated_at: court.updated_at
     })
 
   } catch (error) {
@@ -366,7 +357,7 @@ const deleteCourt = async (req, res) => {
       where: {
         court_id: courtId,
         status: { [Op.in]: ['confirmed', 'pending'] },
-        start_time: { [Op.gt]: new Date() }
+        date: { [Op.gte]: new Date().toISOString().split('T')[0] }
       }
     })
 
@@ -449,8 +440,8 @@ const createTournament = async (req, res) => {
       status: tournament.status,
       rules: tournament.rules,
       contact_info: tournament.contact_info,
-      created_at: tournament.createdAt,
-      updated_at: tournament.updatedAt
+      created_at: tournament.created_at,
+      updated_at: tournament.updated_at
     }
 
     res.status(201).json({
@@ -472,8 +463,8 @@ const createTournament = async (req, res) => {
       status: tournament.status,
       rules: null,
       contact_info: null,
-      created_at: tournament.createdAt,
-      updated_at: tournament.updatedAt
+      created_at: tournament.created_at,
+      updated_at: tournament.updated_at
     })
 
   } catch (error) {
@@ -552,8 +543,8 @@ const updateTournament = async (req, res) => {
       status: tournament.status,
       rules: tournament.rules,
       contact_info: tournament.contact_info,
-      created_at: tournament.createdAt,
-      updated_at: tournament.updatedAt
+      created_at: tournament.created_at,
+      updated_at: tournament.updated_at
     }
 
     res.json({
@@ -575,8 +566,8 @@ const updateTournament = async (req, res) => {
       status: tournament.status,
       rules: null,
       contact_info: null,
-      created_at: tournament.createdAt,
-      updated_at: tournament.updatedAt
+      created_at: tournament.created_at,
+      updated_at: tournament.updated_at
     })
 
   } catch (error) {
@@ -689,8 +680,8 @@ const publishTournament = async (req, res) => {
       status: tournament.status,
       rules: tournament.rules,
       contact_info: tournament.contact_info,
-      created_at: tournament.createdAt,
-      updated_at: tournament.updatedAt
+      created_at: tournament.created_at,
+      updated_at: tournament.updated_at
     }
 
     res.json({
@@ -712,8 +703,8 @@ const publishTournament = async (req, res) => {
       status: tournament.status,
       rules: null,
       contact_info: null,
-      created_at: tournament.createdAt,
-      updated_at: tournament.updatedAt
+      created_at: tournament.created_at,
+      updated_at: tournament.updated_at
     })
 
   } catch (error) {
@@ -773,8 +764,8 @@ const cancelTournament = async (req, res) => {
       status: tournament.status,
       rules: tournament.rules,
       contact_info: tournament.contact_info,
-      created_at: tournament.createdAt,
-      updated_at: tournament.updatedAt
+      created_at: tournament.created_at,
+      updated_at: tournament.updated_at
     }
 
     res.json({
@@ -796,8 +787,8 @@ const cancelTournament = async (req, res) => {
       status: tournament.status,
       rules: null,
       contact_info: null,
-      created_at: tournament.createdAt,
-      updated_at: tournament.updatedAt
+      created_at: tournament.created_at,
+      updated_at: tournament.updated_at
     })
 
   } catch (error) {

@@ -102,12 +102,13 @@ const getPartnerInboxData = async (req, res) => {
         'message_type',
         [Sequelize.fn('COUNT', Sequelize.col('Message.id')), 'count']
       ],
-      group: ['message_type']
+      group: ['Message.message_type'],
+      raw: true
     })
 
     const messagesTypeCount = {}
     messagesByType.forEach(item => {
-      messagesTypeCount[item.message_type] = parseInt(item.dataValues.count)
+      messagesTypeCount[item.message_type] = parseInt(item.count)
     })
 
     // Messages by sender role
@@ -129,13 +130,14 @@ const getPartnerInboxData = async (req, res) => {
         [Sequelize.col('sender.role'), 'sender_role'],
         [Sequelize.fn('COUNT', Sequelize.col('Message.id')), 'count']
       ],
-      group: ['sender.role']
+      group: ['sender.role'],
+      raw: true
     })
 
     const messagesSenderCount = {}
     messagesBySender.forEach(item => {
-      const role = item.dataValues.sender_role
-      messagesSenderCount[role] = parseInt(item.dataValues.count)
+      const role = item.sender_role
+      messagesSenderCount[role] = parseInt(item.count)
     })
 
     // Recent activity (last 7 days)

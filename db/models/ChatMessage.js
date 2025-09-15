@@ -45,26 +45,10 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.TEXT,
       allowNull: false
     },
-    message_type: {
-      type: DataTypes.STRING(20),
-      allowNull: false,
-      defaultValue: 'text',
-      validate: {
-        isIn: [['text', 'image', 'file', 'match_request', 'system']]
-      }
-    },
-    attachment_url: {
-      type: DataTypes.TEXT,
-      allowNull: true
-    },
     sent_at: {
       type: DataTypes.DATE,
       allowNull: false,
       defaultValue: DataTypes.NOW
-    },
-    edited_at: {
-      type: DataTypes.DATE,
-      allowNull: true
     },
     is_system_message: {
       type: DataTypes.BOOLEAN,

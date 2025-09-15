@@ -92,12 +92,12 @@ const getStateStatisticsData = async (req, res) => {
         }
       },
       attributes: [
-        [Sequelize.fn('DATE_FORMAT', Sequelize.col('start_date'), '%Y-%m'), 'month'],
+        [Sequelize.fn('TO_CHAR', Sequelize.col('start_date'), 'YYYY-MM'), 'month'],
         [Sequelize.fn('SUM', Sequelize.col('entry_fee')), 'revenue'],
         [Sequelize.fn('COUNT', Sequelize.col('id')), 'tournaments']
       ],
-      group: [Sequelize.fn('DATE_FORMAT', Sequelize.col('start_date'), '%Y-%m')],
-      order: [[Sequelize.fn('DATE_FORMAT', Sequelize.col('start_date'), '%Y-%m'), 'ASC']]
+      group: [Sequelize.fn('TO_CHAR', Sequelize.col('start_date'), 'YYYY-MM')],
+      order: [[Sequelize.fn('TO_CHAR', Sequelize.col('start_date'), 'YYYY-MM'), 'ASC']]
     })
 
     const monthlyRevenue = revenueByMonth.map(item => ({
@@ -143,11 +143,11 @@ const getStateStatisticsData = async (req, res) => {
         }
       },
       attributes: [
-        [Sequelize.fn('DATE_FORMAT', Sequelize.col('created_at'), '%Y-%m'), 'month'],
+        [Sequelize.fn('TO_CHAR', Sequelize.col('created_at'), 'YYYY-MM'), 'month'],
         [Sequelize.fn('COUNT', Sequelize.col('id')), 'new_players']
       ],
-      group: [Sequelize.fn('DATE_FORMAT', Sequelize.col('created_at'), '%Y-%m')],
-      order: [[Sequelize.fn('DATE_FORMAT', Sequelize.col('created_at'), '%Y-%m'), 'ASC']]
+      group: [Sequelize.fn('TO_CHAR', Sequelize.col('created_at'), 'YYYY-MM')],
+      order: [[Sequelize.fn('TO_CHAR', Sequelize.col('created_at'), 'YYYY-MM'), 'ASC']]
     })
 
     const registrationsByMonth = playersByMonth.map((item, index) => ({
@@ -167,16 +167,16 @@ const getStateStatisticsData = async (req, res) => {
     const ageDistribution = await Player.findAll({
       where: { state_id: stateId },
       attributes: [
-        [Sequelize.fn('CASE',
-          Sequelize.literal(`
-            WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 18 AND 25 THEN '18-25'
-            WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 26 AND 35 THEN '26-35'
-            WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 36 AND 45 THEN '36-45'
-            WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 46 AND 55 THEN '46-55'
-            WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) > 55 THEN '55+'
+        [Sequelize.literal(`
+          CASE
+            WHEN EXTRACT(YEAR FROM AGE(birth_date)) BETWEEN 18 AND 25 THEN '18-25'
+            WHEN EXTRACT(YEAR FROM AGE(birth_date)) BETWEEN 26 AND 35 THEN '26-35'
+            WHEN EXTRACT(YEAR FROM AGE(birth_date)) BETWEEN 36 AND 45 THEN '36-45'
+            WHEN EXTRACT(YEAR FROM AGE(birth_date)) BETWEEN 46 AND 55 THEN '46-55'
+            WHEN EXTRACT(YEAR FROM AGE(birth_date)) > 55 THEN '55+'
             ELSE 'Unknown'
-          `)
-        ), 'age_group'],
+          END
+        `), 'age_group'],
         [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
       ],
       group: [Sequelize.literal('age_group')]
@@ -188,20 +188,20 @@ const getStateStatisticsData = async (req, res) => {
     })
 
     const skillDistribution = await Player.findAll({
-      where: { 
+      where: {
         state_id: stateId,
-        skill_level: { [Op.not]: null }
+        nrtp_level: { [Op.not]: null }
       },
       attributes: [
-        'skill_level',
+        'nrtp_level',
         [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
       ],
-      group: ['skill_level']
+      group: ['nrtp_level']
     })
 
     const skillDistrib = {}
     skillDistribution.forEach(item => {
-      skillDistrib[`Level ${item.skill_level}`] = parseInt(item.dataValues.count)
+      skillDistrib[`Level ${item.nrtp_level}`] = parseInt(item.dataValues.count)
     })
 
     const playerAnalytics = {

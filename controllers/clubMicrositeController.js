@@ -444,7 +444,7 @@ const uploadBannerImage = async (req, res) => {
 const updateMicrositeCustomization = async (req, res) => {
   try {
     const userId = req.user.id
-    const { primary_color, secondary_color, description } = req.body
+    const { primary_color, secondary_color, description, banner_url } = req.body
 
     // Get club profile
     const club = await Club.findOne({
@@ -473,6 +473,7 @@ const updateMicrositeCustomization = async (req, res) => {
         description: description || `Official microsite for ${club.name}`,
         primary_color: primary_color || '#000000',
         secondary_color: secondary_color || '#FFFFFF',
+        banner_url: banner_url || null,
         status: 'active'
       })
     } else {
@@ -481,6 +482,7 @@ const updateMicrositeCustomization = async (req, res) => {
       if (primary_color) updateData.primary_color = primary_color
       if (secondary_color) updateData.secondary_color = secondary_color
       if (description) updateData.description = description
+      if (banner_url !== undefined) updateData.banner_url = banner_url
       updateData.last_updated = new Date()
 
       await microsite.update(updateData)
