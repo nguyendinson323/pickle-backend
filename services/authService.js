@@ -565,6 +565,8 @@ const getDashboardData = async (user) => {
 const register = async (userData, profileData) => {
   const { username, email, password, role } = userData
 
+  console.log("kkkkkkkkkkkkkkkk", username, email);
+  
   const existingUser = await User.findOne({
     where: {
       [Op.or]: [
@@ -574,6 +576,8 @@ const register = async (userData, profileData) => {
     }
   })
 
+  console.log(existingUser);
+  
   if (existingUser) {
     throw new Error('Username or email already exists')
   }
