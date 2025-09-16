@@ -166,10 +166,17 @@ router.put('/profile',
 )
 
 // Upload profile photo
-router.put('/profile/photo', 
-  authenticate, 
-  authorize('coach'), 
+router.put('/profile/photo',
+  authenticate,
+  authorize('coach'),
   coachProfileController.uploadProfilePhoto
+)
+
+// Update ID document
+router.put('/profile/document',
+  authenticate,
+  authorize('coach'),
+  coachProfileController.updateIdDocument
 )
 
 module.exports = router

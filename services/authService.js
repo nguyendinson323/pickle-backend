@@ -565,8 +565,6 @@ const getDashboardData = async (user) => {
 const register = async (userData, profileData) => {
   const { username, email, password, role } = userData
 
-  console.log("kkkkkkkkkkkkkkkk", username, email);
-  
   const existingUser = await User.findOne({
     where: {
       [Op.or]: [

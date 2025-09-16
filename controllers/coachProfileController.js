@@ -149,12 +149,12 @@ const uploadProfilePhoto = async (req, res) => {
   try {
     const userId = req.user.id
     const { profile_photo_url } = req.body
-    
+
     // Find coach
     const coach = await Coach.findOne({
       where: { user_id: userId }
     })
-    
+
     if (!coach) {
       return res.status(404).json({ message: 'Coach profile not found' })
     }
@@ -165,13 +165,45 @@ const uploadProfilePhoto = async (req, res) => {
       updated_at: new Date()
     })
 
-    res.json({ 
+    res.json({
       message: 'Profile photo updated successfully',
-      profile_photo_url 
+      profile_photo_url
     })
 
   } catch (error) {
     console.error('Error uploading profile photo:', error)
+    res.status(500).json({ message: 'Internal server error' })
+  }
+}
+
+// Update coach ID document
+const updateIdDocument = async (req, res) => {
+  try {
+    const userId = req.user.id
+    const { id_document_url } = req.body
+
+    // Find coach
+    const coach = await Coach.findOne({
+      where: { user_id: userId }
+    })
+
+    if (!coach) {
+      return res.status(404).json({ message: 'Coach profile not found' })
+    }
+
+    // Update ID document URL
+    await coach.update({
+      id_document_url,
+      updated_at: new Date()
+    })
+
+    res.json({
+      message: 'ID document updated successfully',
+      id_document_url
+    })
+
+  } catch (error) {
+    console.error('Error updating ID document:', error)
     res.status(500).json({ message: 'Internal server error' })
   }
 }
@@ -250,5 +282,6 @@ module.exports = {
   getCoachProfile,
   updateCoachProfile,
   uploadProfilePhoto,
+  updateIdDocument,
   getCoachDashboard
 }
