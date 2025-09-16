@@ -24,6 +24,21 @@ const upload = multer({
   }
 })
 
+// Configure multer for documents (allows images and PDFs)
+const uploadDocument = multer({
+  storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit for documents
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf') {
+      cb(null, true)
+    } else {
+      cb(new Error('Only image files and PDFs are allowed'), false)
+    }
+  }
+})
+
 // Configure multer for documents and certificates (allows PDFs)
 const uploadCertification = multer({
   storage,
@@ -137,16 +152,29 @@ const uploadPlayerDocument = async (req, res) => {
       return res.status(400).json({ message: 'No file provided' })
     }
 
+    // Handle different file types differently
+    const isImage = req.file.mimetype.startsWith('image/')
+    const isPDF = req.file.mimetype === 'application/pdf'
+
+    let uploadOptions = {
+      folder: 'player_documents',
+      quality: 'auto'
+    }
+
+    if (isImage) {
+      uploadOptions.transformation = [
+        { width: 800, height: 600, crop: 'limit', quality: 'auto' }
+      ]
+      uploadOptions.format = 'jpg'
+    } else if (isPDF) {
+      // For PDFs, Cloudinary will store them as-is
+      uploadOptions.resource_type = 'raw'
+    }
+
     // Upload to Cloudinary
     const result = await new Promise((resolve, reject) => {
       cloudinary.uploader.upload_stream(
-        {
-          folder: 'player_documents',
-          transformation: [
-            { width: 800, height: 600, crop: 'limit', quality: 'auto' }
-          ],
-          format: 'jpg'
-        },
+        uploadOptions,
         (error, result) => {
           if (error) {
             reject(error)
@@ -160,15 +188,15 @@ const uploadPlayerDocument = async (req, res) => {
     res.json({
       secure_url: result.secure_url,
       public_id: result.public_id,
-      width: result.width,
-      height: result.height
+      width: result.width || null,
+      height: result.height || null
     })
 
   } catch (error) {
     console.error('Upload error:', error)
-    res.status(500).json({ 
-      message: 'Upload failed', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Upload failed',
+      error: error.message
     })
   }
 }
@@ -308,16 +336,29 @@ const uploadCoachDocument = async (req, res) => {
       return res.status(400).json({ message: 'No file provided' })
     }
 
+    // Handle different file types differently
+    const isImage = req.file.mimetype.startsWith('image/')
+    const isPDF = req.file.mimetype === 'application/pdf'
+
+    let uploadOptions = {
+      folder: 'coach_documents',
+      quality: 'auto'
+    }
+
+    if (isImage) {
+      uploadOptions.transformation = [
+        { width: 800, height: 600, crop: 'limit', quality: 'auto' }
+      ]
+      uploadOptions.format = 'jpg'
+    } else if (isPDF) {
+      // For PDFs, Cloudinary will store them as-is
+      uploadOptions.resource_type = 'raw'
+    }
+
     // Upload to Cloudinary
     const result = await new Promise((resolve, reject) => {
       cloudinary.uploader.upload_stream(
-        {
-          folder: 'coach_documents',
-          transformation: [
-            { width: 800, height: 600, crop: 'limit', quality: 'auto' }
-          ],
-          format: 'jpg'
-        },
+        uploadOptions,
         (error, result) => {
           if (error) {
             reject(error)
@@ -331,8 +372,8 @@ const uploadCoachDocument = async (req, res) => {
     res.json({
       secure_url: result.secure_url,
       public_id: result.public_id,
-      width: result.width,
-      height: result.height
+      width: result.width || null,
+      height: result.height || null
     })
 
   } catch (error) {
@@ -444,6 +485,7 @@ const uploadCoachCertification = async (req, res) => {
 
 module.exports = {
   upload: upload.single('file'),
+  uploadDocument: uploadDocument.single('file'),
   uploadCertification: uploadCertification.single('file'),
   uploadClubLogo,
   uploadPlayerPhoto,
