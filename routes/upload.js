@@ -1,44 +1,9 @@
 const express = require('express')
 const router = express.Router()
-const {
-  upload,
-  uploadDocument,
-  uploadCertification,
-  uploadClubLogo,
-  uploadPlayerPhoto,
-  uploadPlayerDocument,
-  uploadStateLogo,
-  uploadPartnerLogo,
-  uploadCoachPhoto,
-  uploadCoachDocument,
-  uploadCoachCertification,
-  uploadAdminPhoto
-} = require('../controllers/uploadController')
-const { authenticate } = require('../middlewares/authMiddleware')
+const { upload, uploadFile } = require('../controllers/uploadController')
 
-// Upload club logo - protected route
-router.post('/club-logo', authenticate, upload, uploadClubLogo)
-
-// Upload partner logo - protected route
-router.post('/partner-logo', authenticate, upload, uploadPartnerLogo)
-
-// Upload admin photo - protected route
-router.post('/admin-photo', authenticate, upload, uploadAdminPhoto)
-
-// Upload player assets - protected routes for existing players
-router.post('/player-photo', authenticate, upload, uploadPlayerPhoto)
-router.post('/player-document', authenticate, uploadDocument, uploadPlayerDocument)
-router.post('/coach-photo', authenticate, upload, uploadCoachPhoto)
-router.post('/coach-document', authenticate, uploadDocument, uploadCoachDocument)
-router.post('/coach-certification', authenticate, uploadCertification, uploadCoachCertification)
-
-// Registration upload routes - public routes
-router.post('/club-logo-registration', upload, uploadClubLogo)
-router.post('/player-photo-registration', upload, uploadPlayerPhoto)
-router.post('/player-document-registration', uploadDocument, uploadPlayerDocument)
-router.post('/state-logo-registration', upload, uploadStateLogo)
-router.post('/partner-logo-registration', upload, uploadPartnerLogo)
-router.post('/coach-photo-registration', upload, uploadCoachPhoto)
-router.post('/coach-document-registration', uploadDocument, uploadCoachDocument)
+// Single unified upload route for all file types
+// Handles both registration (public) and profile editing (authenticated)
+router.post('/', upload, uploadFile)
 
 module.exports = router
