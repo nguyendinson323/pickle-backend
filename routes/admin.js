@@ -30,6 +30,7 @@ router.get('/profile/activity', adminProfileController.getActivityLog)
 // User Management Routes
 router.get('/users', adminUserManagementController.getUsers)
 router.get('/users/export', adminUserManagementController.exportUsers)
+router.get('/users/states', adminUserManagementController.getStates)
 router.post('/users/bulk-update', adminUserManagementController.bulkUpdateUsers)
 router.post('/users/notify', adminUserManagementController.sendUserNotification)
 

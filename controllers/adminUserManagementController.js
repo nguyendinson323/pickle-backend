@@ -728,10 +728,292 @@ const bulkUpdateUsers = async (req, res) => {
 
 const exportUsers = async (req, res) => {
   try {
-    const { format = 'csv' } = req.query
-    // Export logic will be implemented based on format
-    // For now, returning success message
-    res.json({ message: 'Export functionality will be implemented' })
+    const {
+      format = 'csv',
+      role,
+      status,
+      state,
+      affiliation,
+      searchTerm,
+      dateFrom,
+      dateTo
+    } = req.query
+
+    const where = {}
+    const profileWhere = {}
+
+    // Apply the same filters as getUsers
+    if (role && role !== '') {
+      where.role = role
+    }
+
+    if (status === 'active') {
+      where.is_active = true
+    } else if (status === 'inactive') {
+      where.is_active = false
+    } else if (status === 'suspended') {
+      where.is_active = false
+      where.suspended = true
+    }
+
+    if (dateFrom && dateTo) {
+      where.created_at = {
+        [Op.between]: [new Date(dateFrom), new Date(dateTo)]
+      }
+    }
+
+    if (searchTerm) {
+      where[Op.or] = [
+        { username: { [Op.iLike]: `%${searchTerm}%` } },
+        { email: { [Op.iLike]: `%${searchTerm}%` } }
+      ]
+    }
+
+    if (state && state !== '') {
+      profileWhere.state_id = parseInt(state)
+    }
+
+    // Get users with their profile information for export
+    const users = await User.findAll({
+      where,
+      include: [
+        {
+          model: Player,
+          as: 'player',
+          required: false,
+          where: Object.keys(profileWhere).length > 0 ? profileWhere : undefined,
+          include: [
+            {
+              model: State,
+              as: 'state',
+              attributes: ['id', 'name']
+            },
+            {
+              model: Club,
+              as: 'club',
+              required: false,
+              attributes: ['id', 'name']
+            }
+          ]
+        },
+        {
+          model: Coach,
+          as: 'coach',
+          required: false,
+          where: Object.keys(profileWhere).length > 0 ? profileWhere : undefined,
+          include: [
+            {
+              model: State,
+              as: 'state',
+              attributes: ['id', 'name']
+            }
+          ]
+        },
+        {
+          model: Club,
+          as: 'club',
+          required: false,
+          where: Object.keys(profileWhere).length > 0 ? profileWhere : undefined,
+          include: [
+            {
+              model: State,
+              as: 'state',
+              attributes: ['id', 'name']
+            }
+          ]
+        },
+        {
+          model: Partner,
+          as: 'partner',
+          required: false,
+          where: Object.keys(profileWhere).length > 0 ? profileWhere : undefined,
+          include: [
+            {
+              model: State,
+              as: 'state',
+              attributes: ['id', 'name']
+            }
+          ]
+        },
+        {
+          model: StateCommittee,
+          as: 'stateCommittee',
+          required: false,
+          include: [
+            {
+              model: State,
+              as: 'state',
+              attributes: ['id', 'name']
+            }
+          ]
+        }
+      ],
+      order: [['created_at', 'DESC']]
+    })
+
+    // Format export data
+    const exportData = users.map(user => {
+      const profile = user.player || user.coach || user.club ||
+                     user.partner || user.stateCommittee
+
+      let affiliationStatus = 'pending'
+      let affiliationExpiresAt = null
+
+      if (profile) {
+        if (profile.affiliation_expires_at) {
+          const expiryDate = new Date(profile.affiliation_expires_at)
+          const now = new Date()
+          affiliationStatus = expiryDate > now ? 'active' : 'expired'
+          affiliationExpiresAt = profile.affiliation_expires_at
+        } else if (profile.premium_expires_at) {
+          const expiryDate = new Date(profile.premium_expires_at)
+          const now = new Date()
+          affiliationStatus = expiryDate > now ? 'active' : 'expired'
+          affiliationExpiresAt = profile.premium_expires_at
+        }
+      }
+
+      return {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        phone: user.phone || '',
+        role: user.role,
+        status: user.is_active ? 'active' : 'inactive',
+        is_verified: user.is_verified ? 'Yes' : 'No',
+        is_premium: user.is_premium ? 'Yes' : 'No',
+        created_at: user.created_at,
+        last_login: user.last_login || '',
+        affiliation_status: affiliationStatus,
+        affiliation_expires_at: affiliationExpiresAt || '',
+        full_name: profile ? (profile.full_name || profile.name || profile.business_name || '') : '',
+        state_name: profile && profile.state ? profile.state.name : '',
+        club_name: profile && profile.club ? profile.club.name : '',
+        nrtp_level: profile && profile.nrtp_level || '',
+        hourly_rate: profile && profile.hourly_rate || '',
+        partner_type: profile && profile.partner_type || ''
+      }
+    })
+
+    if (format === 'csv') {
+      const csvHeaders = [
+        'ID', 'Username', 'Email', 'Phone', 'Role', 'Status', 'Verified', 'Premium',
+        'Created At', 'Last Login', 'Affiliation Status', 'Affiliation Expires',
+        'Full Name', 'State', 'Club', 'NRTP Level', 'Hourly Rate', 'Partner Type'
+      ]
+
+      const csvRows = exportData.map(user => [
+        user.id,
+        user.username,
+        user.email,
+        user.phone,
+        user.role,
+        user.status,
+        user.is_verified,
+        user.is_premium,
+        user.created_at,
+        user.last_login,
+        user.affiliation_status,
+        user.affiliation_expires_at,
+        user.full_name,
+        user.state_name,
+        user.club_name,
+        user.nrtp_level,
+        user.hourly_rate,
+        user.partner_type
+      ])
+
+      const csvContent = [csvHeaders.join(','), ...csvRows.map(row => row.map(field => `"${field}"`).join(','))].join('\n')
+
+      res.setHeader('Content-Type', 'text/csv')
+      res.setHeader('Content-Disposition', `attachment; filename="users-export-${new Date().toISOString().split('T')[0]}.csv"`)
+      res.send(csvContent)
+    } else if (format === 'excel') {
+      // For Excel format, we'll use a library like exceljs
+      const ExcelJS = require('exceljs')
+      const workbook = new ExcelJS.Workbook()
+      const worksheet = workbook.addWorksheet('Users')
+
+      // Add headers
+      worksheet.addRow([
+        'ID', 'Username', 'Email', 'Phone', 'Role', 'Status', 'Verified', 'Premium',
+        'Created At', 'Last Login', 'Affiliation Status', 'Affiliation Expires',
+        'Full Name', 'State', 'Club', 'NRTP Level', 'Hourly Rate', 'Partner Type'
+      ])
+
+      // Add data rows
+      exportData.forEach(user => {
+        worksheet.addRow([
+          user.id,
+          user.username,
+          user.email,
+          user.phone,
+          user.role,
+          user.status,
+          user.is_verified,
+          user.is_premium,
+          user.created_at,
+          user.last_login,
+          user.affiliation_status,
+          user.affiliation_expires_at,
+          user.full_name,
+          user.state_name,
+          user.club_name,
+          user.nrtp_level,
+          user.hourly_rate,
+          user.partner_type
+        ])
+      })
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      res.setHeader('Content-Disposition', `attachment; filename="users-export-${new Date().toISOString().split('T')[0]}.xlsx"`)
+
+      await workbook.xlsx.write(res)
+      res.end()
+    } else if (format === 'pdf') {
+      // For PDF format, we'll use a library like pdfkit
+      const PDFDocument = require('pdfkit')
+      const doc = new PDFDocument()
+
+      res.setHeader('Content-Type', 'application/pdf')
+      res.setHeader('Content-Disposition', `attachment; filename="users-export-${new Date().toISOString().split('T')[0]}.pdf"`)
+
+      doc.pipe(res)
+
+      // Title
+      doc.fontSize(16).text('User Management Report', { align: 'center' })
+      doc.fontSize(12).text(`Generated on: ${new Date().toLocaleString()}`, { align: 'center' })
+      doc.moveDown()
+
+      // Table headers (simplified for PDF)
+      doc.fontSize(10)
+      const tableTop = doc.y
+      doc.text('Username', 50, tableTop)
+      doc.text('Email', 150, tableTop)
+      doc.text('Role', 280, tableTop)
+      doc.text('Status', 350, tableTop)
+      doc.text('Created', 420, tableTop)
+
+      let yPosition = tableTop + 20
+
+      exportData.forEach(user => {
+        if (yPosition > 700) { // Start new page if needed
+          doc.addPage()
+          yPosition = 50
+        }
+
+        doc.text(user.username, 50, yPosition)
+        doc.text(user.email, 150, yPosition)
+        doc.text(user.role, 280, yPosition)
+        doc.text(user.status, 350, yPosition)
+        doc.text(new Date(user.created_at).toLocaleDateString(), 420, yPosition)
+        yPosition += 15
+      })
+
+      doc.end()
+    } else {
+      return res.status(400).json({ message: 'Unsupported export format' })
+    }
 
   } catch (error) {
     console.error('Error exporting users:', error)
@@ -768,6 +1050,20 @@ const sendUserNotification = async (req, res) => {
   }
 }
 
+const getStates = async (req, res) => {
+  try {
+    const states = await State.findAll({
+      attributes: ['id', 'name', 'short_code'],
+      order: [['name', 'ASC']]
+    })
+
+    res.json(states)
+  } catch (error) {
+    console.error('Error fetching states:', error)
+    res.status(500).json({ message: 'Failed to fetch states' })
+  }
+}
+
 module.exports = {
   getUsers,
   getUserDetails,
@@ -777,5 +1073,6 @@ module.exports = {
   resetUserPassword,
   bulkUpdateUsers,
   exportUsers,
-  sendUserNotification
+  sendUserNotification,
+  getStates
 }
